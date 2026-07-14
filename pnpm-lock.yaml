@@ -44,6 +44,9 @@ importers:
       '@fontsource/noto-color-emoji':
         specifier: ^5.2.12
         version: 5.2.12
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/node':
         specifier: ^26.1.0
         version: 26.1.0
@@ -56,6 +59,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.2.0
         version: 5.2.0(vite@7.3.6(@types/node@26.1.0)(jiti@2.7.0)(tsx@4.23.0))
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       electron:
         specifier: ^43.0.0
         version: 43.0.0
@@ -839,6 +845,9 @@ packages:
 
   '@types/cacheable-request@6.0.3':
     resolution: {integrity: sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw==}
+
+  '@types/cross-spawn@6.0.6':
+    resolution: {integrity: sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==}
 
   '@types/debug@4.1.13':
     resolution: {integrity: sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==}
@@ -2603,6 +2612,10 @@ snapshots:
       '@types/keyv': 3.1.4
       '@types/node': 26.1.0
       '@types/responselike': 1.0.3
+
+  '@types/cross-spawn@6.0.6':
+    dependencies:
+      '@types/node': 26.1.0
 
   '@types/debug@4.1.13':
     dependencies:

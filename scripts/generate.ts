@@ -1,6 +1,7 @@
-import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { sync as spawnSync } from "cross-spawn";
 
 import { findSingBoxDirectory } from "./sing-box";
 

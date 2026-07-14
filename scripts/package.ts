@@ -1,8 +1,8 @@
-import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import spawn, { sync as spawnSync } from "cross-spawn";
 import {
   Arch,
   build as buildElectronApplication,
