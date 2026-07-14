@@ -3,7 +3,12 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { APP_TITLE_BAR_OVERLAY, DEEP_LINK_IMPORT, PROFILE_FILE_IMPORT } from "../shared/ipc";
+import {
+  APP_TITLE_BAR_OVERLAY,
+  DEEP_LINK_IMPORT,
+  PROFILE_FILE_IMPORT,
+  UPDATES_PRESENT,
+} from "../shared/ipc";
 import type { DeepLinkImport, ProfileFileImport, TitleBarOverlayColors } from "../shared/ipc";
 import { archiveNativeCrashDumps, captureRuntimeCrash } from "./appReports";
 import { registerApplication } from "./application";
@@ -27,6 +32,7 @@ import {
 } from "./settings";
 import { daemonState } from "./state";
 import { initializeTray, updateTrayVisibility } from "./tray";
+import { registerUpdates, runStartupUpdateCheck } from "./updates";
 import { prepareTrayMenuWindow, showTrayMenu } from "./trayMenu";
 import { secureApplicationUserData } from "./userDataSecurity";
 import {
@@ -337,6 +343,7 @@ if (!singleInstanceLock) {
     registerProfiles();
     registerServers();
     registerSettings(updateTrayVisibility);
+    registerUpdates();
     const link = deepLinkFromArguments(process.argv);
     const profileFile = profileFileFromArguments(process.argv);
     const startInTray =
@@ -364,5 +371,6 @@ if (!singleInstanceLock) {
     if (profileFile) {
       handleProfileFile(profileFile);
     }
+    void runStartupUpdateCheck(() => sendWhenLoaded(UPDATES_PRESENT, null));
   });
 }

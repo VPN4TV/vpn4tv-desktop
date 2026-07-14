@@ -179,6 +179,7 @@ export function createDesktopHost(): DesktopHost {
       cacheSize: () => bridge.settings.cacheSize(),
       clearCache: () => bridge.settings.clearCache(),
     },
+    updates: bridge.updates,
     application: {
       showMainWindow: () => {
         void bridge.app.showMainWindow();

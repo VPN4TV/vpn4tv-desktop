@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, safeStorage } from "electron";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -9,6 +9,7 @@ interface PreferenceRow {
 }
 
 const MAXIMUM_PREFERENCE_BYTES = 1024 * 1024;
+const LEGACY_ENCRYPTED_VALUE_PREFIX = "safe-storage:";
 
 class SettingsDatabase extends DatabaseSync {
   transaction<Arguments extends unknown[], Result>(
@@ -36,6 +37,74 @@ class SettingsDatabase extends DatabaseSync {
 }
 
 let database: SettingsDatabase | null = null;
+
+function decryptLegacyString(value: string): string {
+  if (!value.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX)) {
+    return value;
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("credential decryption is unavailable");
+  }
+  return safeStorage.decryptString(
+    Buffer.from(value.slice(LEGACY_ENCRYPTED_VALUE_PREFIX.length), "base64"),
+  );
+}
+
+function migrateLegacyEncryptedStrings(store: SettingsDatabase): void {
+  const profileRows = store
+    .prepare("SELECT id, remote_url FROM profiles WHERE remote_url IS NOT NULL")
+    .all() as unknown as { id: string; remote_url: string }[];
+  const serverRows = store
+    .prepare("SELECT id, url, secret FROM remote_servers")
+    .all() as unknown as { id: string; url: string; secret: string }[];
+  const githubTokenRow = store
+    .prepare("SELECT data FROM preferences WHERE name = 'github_token'")
+    .get() as Pick<PreferenceRow, "data"> | undefined;
+  const githubTokenValue =
+    githubTokenRow === undefined ? undefined : decodePreference(githubTokenRow.data);
+  const encryptedGithubToken =
+    typeof githubTokenValue === "string" &&
+    githubTokenValue.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX)
+      ? githubTokenValue
+      : undefined;
+  const encryptedProfiles = profileRows.filter((row) =>
+    row.remote_url.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX),
+  );
+  const encryptedServers = serverRows.filter(
+    (row) =>
+      row.url.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX) ||
+      row.secret.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX),
+  );
+  if (
+    encryptedGithubToken === undefined &&
+    encryptedProfiles.length === 0 &&
+    encryptedServers.length === 0
+  ) {
+    return;
+  }
+
+  store.transaction(() => {
+    const updateProfile = store.prepare("UPDATE profiles SET remote_url = ? WHERE id = ?");
+    for (const row of encryptedProfiles) {
+      updateProfile.run(decryptLegacyString(row.remote_url), row.id);
+    }
+    const updateServer = store.prepare(
+      "UPDATE remote_servers SET url = ?, secret = ? WHERE id = ?",
+    );
+    for (const row of encryptedServers) {
+      updateServer.run(
+        decryptLegacyString(row.url),
+        decryptLegacyString(row.secret),
+        row.id,
+      );
+    }
+    if (encryptedGithubToken !== undefined) {
+      store
+        .prepare("UPDATE preferences SET data = ? WHERE name = 'github_token'")
+        .run(encodePreference(decryptLegacyString(encryptedGithubToken)));
+    }
+  })();
+}
 
 function createSchema(store: SettingsDatabase): void {
   store.exec(
@@ -74,6 +143,7 @@ export function settingsDatabase(): SettingsDatabase {
   try {
     store.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
     createSchema(store);
+    migrateLegacyEncryptedStrings(store);
   } catch (error) {
     store.close();
     throw error;
@@ -96,6 +166,13 @@ function encodePreference(value: unknown): Buffer {
 
 function decodePreference(data: Uint8Array): unknown {
   return JSON.parse(Buffer.from(data).toString("utf-8")) as unknown;
+}
+
+export function parseBooleanPreference(value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error("invalid boolean preference");
+  }
+  return value;
 }
 
 export class Preference<Value> {

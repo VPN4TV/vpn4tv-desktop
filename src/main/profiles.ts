@@ -17,7 +17,6 @@ import type {
 import { writeApplicationCacheFile } from "./appCache";
 import { desktopService } from "./daemon";
 import { Preference, settingsDatabase } from "./database";
-import { decodeSecureString, encodeSecureString } from "./secureStorage";
 import { oomStartOptions } from "./settings";
 import { applicationService } from "./worker";
 import { daemonState } from "./state";
@@ -98,7 +97,7 @@ function profileFromRow(row: ProfileRow): ProfileMetadata {
     autoUpdateIntervalMinutes: row.auto_update_interval_minutes,
   };
   if (row.remote_url !== null) {
-    profile.remoteUrl = decodeSecureString(row.remote_url);
+    profile.remoteUrl = row.remote_url;
   }
   if (row.last_updated !== null) {
     profile.lastUpdated = row.last_updated;
@@ -262,9 +261,7 @@ async function insertProfile(
         profile.id,
         profile.name,
         profile.type,
-        profile.remoteUrl === undefined
-          ? null
-          : encodeSecureString(profile.remoteUrl),
+        profile.remoteUrl ?? null,
         profile.autoUpdate ? 1 : 0,
         profile.autoUpdateIntervalMinutes,
         profile.lastUpdated ?? null,
@@ -513,7 +510,7 @@ const handlers: Record<
               "UPDATE profiles SET remote_url = ?, last_updated = ? WHERE id = ?",
             )
             .run(
-              encodeSecureString(patch.remoteUrl),
+              patch.remoteUrl,
               remoteContent === null
                 ? (profile.lastUpdated ?? null)
                 : Date.now(),

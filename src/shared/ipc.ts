@@ -226,6 +226,50 @@ export interface SettingsBridge {
   clearCache(): Promise<void>;
 }
 
+export const UPDATES_CALL = "updates:call";
+export const UPDATES_STATE_CHANGED = "updates:state-changed";
+export const UPDATES_PRESENT = "updates:present";
+
+export type UpdateTrack = "stable" | "beta";
+export type UpdateInstallResult = "started" | "signer-mismatch" | "not-newer";
+
+export interface AppUpdateInfo {
+  versionName: string;
+  releaseURL: string;
+  downloadURL: string;
+  releaseNotes: string;
+  isPrerelease: boolean;
+  fileSize: number;
+}
+
+export interface UpdatesState {
+  supported: boolean;
+  track: UpdateTrack;
+  stableTrackAvailable: boolean;
+  checkUpdateEnabled: boolean;
+  prompted: boolean;
+  info: AppUpdateInfo | null;
+  checking: boolean;
+  downloading: boolean;
+  installing: boolean;
+  downloadProgress: number;
+}
+
+export interface UpdatesBridge {
+  state(): Promise<UpdatesState>;
+  check(): Promise<AppUpdateInfo | null>;
+  getGitHubToken(): Promise<string>;
+  setGitHubToken(value: string): Promise<void>;
+  downloadAndInstall(): Promise<UpdateInstallResult>;
+  installWithElevation(): Promise<boolean>;
+  setTrack(track: UpdateTrack): Promise<void>;
+  setCheckUpdateEnabled(value: boolean): Promise<void>;
+  setPrompted(): Promise<void>;
+  markShown(): Promise<void>;
+  onStateChanged(listener: (state: UpdatesState) => void): () => void;
+  onPresentRequested(listener: () => void): () => void;
+}
+
 export interface DeepLinkImport {
   name: string;
   url: string;
@@ -256,5 +300,6 @@ export interface DesktopBridge {
   servers: ServersBridge;
   preferences: PreferencesBridge;
   settings: SettingsBridge;
+  updates: UpdatesBridge;
   app: AppBridge;
 }

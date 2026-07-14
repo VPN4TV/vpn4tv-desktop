@@ -23,6 +23,9 @@ import {
   SERVERS_CALL,
   SETTINGS_CALL,
   SETUP_CALL,
+  UPDATES_CALL,
+  UPDATES_PRESENT,
+  UPDATES_STATE_CHANGED,
 } from "../shared/ipc";
 import type {
   DaemonConnectionState,
@@ -31,6 +34,7 @@ import type {
   ProfileFileImport,
   ProfilesResult,
   StreamEvent,
+  UpdatesState,
 } from "../shared/ipc";
 
 async function callResult<T>(channel: string, method: string, ...callArguments: unknown[]): Promise<T> {
@@ -64,6 +68,19 @@ function callCore<T>(method: string): Promise<T> {
 function callReports<T>(method: string, ...callArguments: unknown[]): Promise<T> {
   return callResult(REPORTS_CALL, method, ...callArguments);
 }
+
+let updatePresentationPending = false;
+const updatePresentationListeners = new Set<() => void>();
+
+ipcRenderer.on(UPDATES_PRESENT, () => {
+  if (updatePresentationListeners.size === 0) {
+    updatePresentationPending = true;
+    return;
+  }
+  for (const listener of updatePresentationListeners) {
+    listener();
+  }
+});
 
 const bridge: DesktopBridge = {
   platform: process.platform,
@@ -172,6 +189,36 @@ const bridge: DesktopBridge = {
     setOOMKillerKillConnections: (value) => callSettings("setOOMKillerKillConnections", value),
     cacheSize: () => callSettings("cacheSize"),
     clearCache: () => callSettings("clearCache"),
+  },
+  updates: {
+    state: () => callResult(UPDATES_CALL, "state"),
+    check: () => callResult(UPDATES_CALL, "check"),
+    getGitHubToken: () => callResult(UPDATES_CALL, "getGitHubToken"),
+    setGitHubToken: (value) => callResult(UPDATES_CALL, "setGitHubToken", value),
+    downloadAndInstall: () => callResult(UPDATES_CALL, "downloadAndInstall"),
+    installWithElevation: () => callResult(UPDATES_CALL, "installWithElevation"),
+    setTrack: (track) => callResult(UPDATES_CALL, "setTrack", track),
+    setCheckUpdateEnabled: (value) =>
+      callResult(UPDATES_CALL, "setCheckUpdateEnabled", value),
+    setPrompted: () => callResult(UPDATES_CALL, "setPrompted"),
+    markShown: () => callResult(UPDATES_CALL, "markShown"),
+    onStateChanged: (listener) => {
+      const handler = (_event: IpcRendererEvent, state: UpdatesState) => listener(state);
+      ipcRenderer.on(UPDATES_STATE_CHANGED, handler);
+      return () => {
+        ipcRenderer.removeListener(UPDATES_STATE_CHANGED, handler);
+      };
+    },
+    onPresentRequested: (listener) => {
+      updatePresentationListeners.add(listener);
+      if (updatePresentationPending) {
+        updatePresentationPending = false;
+        listener();
+      }
+      return () => {
+        updatePresentationListeners.delete(listener);
+      };
+    },
   },
   app: {
     version: () => callResult(APP_CALL, "version"),

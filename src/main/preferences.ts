@@ -6,7 +6,12 @@ import {
   PREFERENCES_SNAPSHOT,
 } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
-import { preferenceSnapshot, removePreference, setPreference } from "./database";
+import {
+  parseBooleanPreference,
+  preferenceSnapshot,
+  removePreference,
+  setPreference,
+} from "./database";
 
 type PreferenceParser = (value: unknown) => unknown;
 
@@ -98,12 +103,7 @@ const rendererPreferences: Record<string, PreferenceParser> = {
   },
   "connection-state-filter": stringChoice("all", "active", "closed"),
   "connection-sort": stringChoice("date", "traffic", "trafficTotal"),
-  "disable-deprecated-warnings": (value) => {
-    if (typeof value !== "boolean") {
-      throw new Error("invalid boolean preference");
-    }
-    return value;
-  },
+  "disable-deprecated-warnings": parseBooleanPreference,
   "tailscale-ssh": parseTailscaleSSH,
   "terminal-config": parseTerminalConfig,
   "desktop-active-server": (value) => {
