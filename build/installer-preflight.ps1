@@ -39,7 +39,7 @@ function Exit-Installer([int]$Code) {
         [System.IO.File]::WriteAllText(
             $ResultCodePath,
             [string]$Code,
-            [System.Text.Encoding]::Unicode
+            [System.Text.Encoding]::ASCII
         )
     }
     exit $Code
@@ -49,7 +49,7 @@ if (-not [string]::IsNullOrWhiteSpace($ProcessIDPath)) {
     [System.IO.File]::WriteAllText(
         $ProcessIDPath,
         [string]$PID,
-        [System.Text.Encoding]::Unicode
+        [System.Text.Encoding]::ASCII
     )
 }
 
@@ -775,11 +775,11 @@ try {
         Exit-Installer 20
     }
 
-    $expectedIdentities = @(
-        "S-1-5-18",
-        "S-1-5-32-544",
-        (Get-ServiceSid "sing-box-daemon")
-    )
+    $expectedIdentities = @{
+        "S-1-5-18" = $false
+        "S-1-5-32-544" = $false
+        (Get-ServiceSid "sing-box-daemon") = $false
+    }
     $accessControl = Get-Acl -LiteralPath $workingDirectory
     $owner = $accessControl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
     if ($owner -ne "S-1-5-18") {
@@ -794,12 +794,18 @@ try {
         $false,
         [System.Security.Principal.SecurityIdentifier]
     ))
-    if ($rules.Count -ne $expectedIdentities.Count) {
+    if ($rules.Count -lt $expectedIdentities.Count) {
         Exit-Installer 22
     }
     foreach ($rule in $rules) {
-        if ($rule.IdentityReference.Value -notin $expectedIdentities -or
-            $rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow -or
+        if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+            Exit-Installer 22
+        }
+        $identity = $rule.IdentityReference.Value
+        if (-not $expectedIdentities.ContainsKey($identity)) {
+            continue
+        }
+        if ($expectedIdentities[$identity] -or
             [int]$rule.FileSystemRights -ne [int][System.Security.AccessControl.FileSystemRights]::FullControl -or
             $rule.InheritanceFlags -ne (
                 [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
@@ -808,6 +814,10 @@ try {
             $rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) {
             Exit-Installer 22
         }
+        $expectedIdentities[$identity] = $true
+    }
+    if ($expectedIdentities.Values -contains $false) {
+        Exit-Installer 22
     }
     Exit-Installer 0
 } catch {

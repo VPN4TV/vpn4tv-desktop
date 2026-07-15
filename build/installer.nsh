@@ -582,6 +582,27 @@ FunctionEnd
   StrCpy ${OUT} "$INSTDIR\resources\daemon\sing-box-daemon.exe"
 !macroend
 
+!macro refreshDesktopShortcutIfPresent NEW_LINK OLD_LINK REFRESHED
+  StrCpy $7 0
+  ${if} ${FileExists} "${NEW_LINK}"
+    WinShell::UninstShortcut "${NEW_LINK}"
+    Delete "${NEW_LINK}"
+    StrCpy $7 1
+  ${endif}
+  ${if} "${OLD_LINK}" != "${NEW_LINK}"
+  ${andif} ${FileExists} "${OLD_LINK}"
+    WinShell::UninstShortcut "${OLD_LINK}"
+    Delete "${OLD_LINK}"
+    StrCpy $7 1
+  ${endif}
+  ${if} $7 == 1
+    CreateShortCut "${NEW_LINK}" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
+    ClearErrors
+    WinShell::SetLnkAUMI "${NEW_LINK}" "${APP_ID}"
+    StrCpy ${REFRESHED} 1
+  ${endif}
+!macroend
+
 !macro executeDaemonServiceCommand ACTION OPTIONS RESULT DETAILS
   Delete "$PLUGINSDIR\service-command.log"
   StrCpy ${RESULT} -1
@@ -724,6 +745,9 @@ FunctionEnd
     ${if} $hasExistingInstallation == 0
       Abort
     ${endif}
+    Call restoreInstallerNavigation
+    GetDlgItem $0 $HWNDPARENT 3
+    ShowWindow $0 ${SW_HIDE}
     !insertmacro MUI_HEADER_TEXT "$(existingInstallationPageTitle)" "$(existingInstallationPageSubtitle)"
     nsDialogs::Create 1018
     Pop $existingInstallationActionDialog
@@ -809,6 +833,7 @@ FunctionEnd
     ${andif} $reinstallExistingInstallation == 0
       Abort
     ${endif}
+    Call restoreInstallerNavigation
     !insertmacro MUI_HEADER_TEXT "$(dataDirectoriesPageTitle)" "$(dataDirectoriesPageSubtitle)"
     nsDialogs::Create 1018
     Pop $dataDirectoriesDialog
@@ -1413,6 +1438,16 @@ FunctionEnd
   !insertmacro executeDataTransition "Commit"
   ${if} $1 != 0
     MessageBox MB_OK|MB_ICONEXCLAMATION "$(dataMigrationCleanupFailed)"
+  ${endif}
+  StrCpy $4 0
+  !insertmacro refreshDesktopShortcutIfPresent "$newDesktopLink" "$oldDesktopLink" $4
+  SetShellVarContext current
+  StrCpy $5 "$DESKTOP\${SHORTCUT_NAME}.lnk"
+  StrCpy $6 "$DESKTOP\$oldShortcutName.lnk"
+  !insertmacro refreshDesktopShortcutIfPresent "$5" "$6" $4
+  SetShellVarContext all
+  ${if} $4 == 1
+    System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
   ${endif}
 !macroend
 

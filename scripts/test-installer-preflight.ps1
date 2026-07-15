@@ -164,6 +164,39 @@ try {
         throw "The repair removed the safe inheritable access rule."
     }
 
+    $daemonDirectory = "$temporaryDrive\daemon-data"
+    [void](New-Item -ItemType Directory -Path $daemonDirectory -Force)
+    $serviceUser = [System.Security.Principal.SecurityIdentifier]::new(
+        (Get-ServiceSid "sing-box-daemon")
+    )
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $daemonAccessControl = [System.Security.AccessControl.DirectorySecurity]::new()
+    $daemonAccessControl.SetOwner($system)
+    $daemonAccessControl.SetAccessRuleProtection($true, $false)
+    foreach ($identity in @($system, $administrators, $serviceUser, $currentUser)) {
+        $fullControlRule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $identity,
+            [System.Security.AccessControl.FileSystemRights]::FullControl,
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+                [System.Security.AccessControl.InheritanceFlags]::ObjectInherit,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+        [void]$daemonAccessControl.AddAccessRule($fullControlRule)
+    }
+    Set-Acl -LiteralPath $daemonDirectory -AclObject $daemonAccessControl
+
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile `
+        -NonInteractive `
+        -ExecutionPolicy Bypass `
+        -File $PreflightScript `
+        -InstallationDirectory $mappedInstallationDirectory `
+        -DaemonWorkingDirectory $daemonDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw "Authorized daemon directory access failed with exit code $LASTEXITCODE"
+    }
+
     "repairMilliseconds=$($stopwatch.ElapsedMilliseconds)"
     "unchangedDescriptors=$($unchangedPaths.Count)"
 } finally {

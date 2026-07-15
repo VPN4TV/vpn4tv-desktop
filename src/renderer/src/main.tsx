@@ -14,17 +14,22 @@ import "@dashboard/styles/shared.css";
 import { createDesktopHost } from "./host";
 
 // Chromium serializes the registered window-controls tokens as
-// "color(srgb r g b)" once color-mix() is involved, and Electron's
-// setTitleBarOverlay parses colors with content::ParseCssColorString
-// (shell/browser/native_window_views.cc), which rejects the color()
-// function — convert to the legacy rgb() form it accepts.
+// "color(srgb r g b)" once color-mix() is involved and as "oklab(...)"
+// while they transition, and Electron's setTitleBarOverlay parses colors
+// with content::ParseCssColorString (shell/browser/native_window_views.cc),
+// which accepts only the legacy forms — normalize through a canvas.
+const colorContext = document
+  .createElement("canvas")
+  .getContext("2d", { willReadFrequently: true })!;
+
 function legacyColor(computed: string): string {
   const value = computed.trim();
-  const srgb = value.match(/^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)\)$/);
-  if (!srgb) {
-    return value;
+  if (value === "") {
+    return "";
   }
-  const [red, green, blue] = srgb.slice(1).map((channel) => Math.round(Number(channel) * 255));
+  colorContext.fillStyle = value;
+  colorContext.fillRect(0, 0, 1, 1);
+  const [red, green, blue] = colorContext.getImageData(0, 0, 1, 1).data;
   return `rgb(${red}, ${green}, ${blue})`;
 }
 
@@ -32,17 +37,34 @@ function watchTitleBarOverlayTheme() {
   if (window.desktop.platform === "darwin") {
     return;
   }
+  let lastColor = "";
+  let lastSymbolColor = "";
   const report = () => {
     const style = getComputedStyle(document.documentElement);
     const color = legacyColor(style.getPropertyValue("--window-controls-surface"));
     const symbolColor = legacyColor(style.getPropertyValue("--window-controls-text"));
-    if (color && symbolColor) {
-      window.desktop.app.setTitleBarOverlay({ color, symbolColor });
+    if (!color || !symbolColor || (color === lastColor && symbolColor === lastSymbolColor)) {
+      return;
     }
+    lastColor = color;
+    lastSymbolColor = symbolColor;
+    window.desktop.app.setTitleBarOverlay({ color, symbolColor });
   };
-  new MutationObserver(report).observe(document.documentElement, {
+  let frame = 0;
+  const followTransition = () => {
+    cancelAnimationFrame(frame);
+    const startedAt = performance.now();
+    const step = () => {
+      report();
+      if (performance.now() - startedAt < 400) {
+        frame = requestAnimationFrame(step);
+      }
+    };
+    step();
+  };
+  new MutationObserver(followTransition).observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-scrim"],
+    attributeFilter: ["data-theme", "data-scrim", "dir"],
   });
   report();
 }

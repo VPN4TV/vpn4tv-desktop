@@ -81,6 +81,12 @@ export function createDesktopHost(): DesktopHost {
       onStateChanged: (listener) => bridge.daemon.onStateChanged(listener),
       retryConnection: () => bridge.daemon.retryConnection(),
     },
+    terminal: {
+      openWindow: (route) => {
+        void bridge.terminal.openWindow(route).catch(showError);
+      },
+      closeWindow: () => bridge.terminal.closeWindow(),
+    },
     setup: {
       repairInstall: () => bridge.setup.repairInstall(),
       repairStart: () => bridge.setup.repairStart(),

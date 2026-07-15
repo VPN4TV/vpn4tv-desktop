@@ -1,5 +1,7 @@
 export const DAEMON_UNARY = "daemon:unary";
 export const DAEMON_STREAM_OPEN = "daemon:stream-open";
+export const DAEMON_STREAM_SEND = "daemon:stream-send";
+export const DAEMON_STREAM_END = "daemon:stream-end";
 export const DAEMON_STREAM_CANCEL = "daemon:stream-cancel";
 export const DAEMON_STREAM_EVENT = "daemon:stream-event";
 export const DAEMON_STATE_GET = "daemon:state-get";
@@ -35,7 +37,9 @@ export type StreamEvent =
 
 export interface DaemonBridge {
   unary(service: string, method: string, request: Uint8Array): Promise<UnaryResult>;
-  streamOpen(id: number, service: string, method: string, request: Uint8Array): void;
+  streamOpen(id: number, service: string, method: string): void;
+  streamSend(id: number, request: Uint8Array): void;
+  streamEnd(id: number): void;
   streamCancel(id: number): void;
   onStreamEvent(listener: (event: StreamEvent) => void): () => void;
   getState(): Promise<DaemonConnectionState>;
@@ -49,6 +53,14 @@ export const SERVERS_CALL = "servers:call";
 export const PREFERENCES_CALL = "preferences:call";
 export const PREFERENCES_CHANGED = "preferences:changed";
 export const PREFERENCES_SNAPSHOT = "preferences:snapshot";
+
+export const TERMINAL_WINDOW_OPEN = "terminal:window-open";
+export const TERMINAL_WINDOW_CLOSE = "terminal:window-close";
+
+export interface TerminalBridge {
+  openWindow(route: string): Promise<void>;
+  closeWindow(): void;
+}
 
 export type ProfilesResult = { ok: true; value: unknown } | { ok: false; error: string };
 
@@ -308,6 +320,7 @@ export interface DesktopBridge {
   profiles: ProfilesBridge;
   servers: ServersBridge;
   preferences: PreferencesBridge;
+  terminal: TerminalBridge;
   settings: SettingsBridge;
   updates: UpdatesBridge;
   app: AppBridge;

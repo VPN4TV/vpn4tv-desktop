@@ -9,8 +9,10 @@ import {
   DAEMON_STATE_CHANGED,
   DAEMON_STATE_GET,
   DAEMON_STREAM_CANCEL,
+  DAEMON_STREAM_END,
   DAEMON_STREAM_EVENT,
   DAEMON_STREAM_OPEN,
+  DAEMON_STREAM_SEND,
   DAEMON_UNARY,
   DEEP_LINK_IMPORT,
   PREFERENCES_CALL,
@@ -23,6 +25,8 @@ import {
   SERVERS_CALL,
   SETTINGS_CALL,
   SETUP_CALL,
+  TERMINAL_WINDOW_CLOSE,
+  TERMINAL_WINDOW_OPEN,
   UPDATES_CALL,
   UPDATES_PRESENT,
   UPDATES_STATE_CHANGED,
@@ -86,8 +90,14 @@ const bridge: DesktopBridge = {
   platform: process.platform,
   daemon: {
     unary: (service, method, request) => ipcRenderer.invoke(DAEMON_UNARY, service, method, request),
-    streamOpen: (id, service, method, request) => {
-      ipcRenderer.send(DAEMON_STREAM_OPEN, id, service, method, request);
+    streamOpen: (id, service, method) => {
+      ipcRenderer.send(DAEMON_STREAM_OPEN, id, service, method);
+    },
+    streamSend: (id, request) => {
+      ipcRenderer.send(DAEMON_STREAM_SEND, id, request);
+    },
+    streamEnd: (id) => {
+      ipcRenderer.send(DAEMON_STREAM_END, id);
     },
     streamCancel: (id) => {
       ipcRenderer.send(DAEMON_STREAM_CANCEL, id);
@@ -178,6 +188,12 @@ const bridge: DesktopBridge = {
       return () => {
         ipcRenderer.removeListener(PREFERENCES_CHANGED, handler);
       };
+    },
+  },
+  terminal: {
+    openWindow: (route) => ipcRenderer.invoke(TERMINAL_WINDOW_OPEN, route),
+    closeWindow: () => {
+      ipcRenderer.send(TERMINAL_WINDOW_CLOSE);
     },
   },
   settings: {

@@ -36,6 +36,8 @@ import { initializeTray, updateTrayVisibility } from "./tray";
 import { registerUpdates, runStartupUpdateCheck } from "./updates";
 import { prepareTrayMenuWindow, showTrayMenu } from "./trayMenu";
 import { secureApplicationUserData } from "./userDataSecurity";
+import { registerTerminalWindows } from "./terminalWindows";
+import { applyTitleBarOverlayColors, titleBarOverlay } from "./titleBarOverlay";
 import {
   MAIN_WINDOW_MINIMUM_HEIGHT,
   MAIN_WINDOW_MINIMUM_WIDTH,
@@ -56,11 +58,6 @@ secureApplicationUserData();
 crashReporter.start({ submitURL: "", uploadToServer: false, compress: false });
 
 const testScriptPath = developmentSwitchValue("test-script");
-
-const TITLE_BAR_OVERLAY_HEIGHT = 51;
-
-// Electron's native Windows/Linux controls overlay does not follow the page theme.
-let titleBarOverlayColors: TitleBarOverlayColors | undefined;
 
 function createWindow(): BrowserWindow {
   const restoredState = process.platform === "win32" ? storedMainWindowState() : undefined;
@@ -88,10 +85,7 @@ function createWindow(): BrowserWindow {
     show: false,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     trafficLightPosition: process.platform === "darwin" ? { x: 18, y: 19 } : undefined,
-    titleBarOverlay:
-      process.platform === "darwin"
-        ? undefined
-        : { height: TITLE_BAR_OVERLAY_HEIGHT, ...titleBarOverlayColors },
+    titleBarOverlay: titleBarOverlay(),
     icon: process.platform === "linux" ? resourcePath("icons", "512x512.png") : undefined,
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
@@ -141,15 +135,25 @@ function createWindow(): BrowserWindow {
     if (mainWindow === window) {
       mainWindow = null;
     }
-    if (!quitting && !trayInBackground()) {
-      app.quit();
-    }
+    maybeQuitAfterWindowClosed();
   });
   return window;
 }
 
 let mainWindow: BrowserWindow | null = null;
+let terminalWindows: Set<BrowserWindow> | null = null;
 let quitting = false;
+
+function maybeQuitAfterWindowClosed() {
+  if (
+    !quitting &&
+    mainWindow === null &&
+    !terminalWindows?.size &&
+    !trayInBackground()
+  ) {
+    app.quit();
+  }
+}
 
 app.on("before-quit", () => {
   quitting = true;
@@ -324,14 +328,16 @@ if (!singleInstanceLock) {
     });
     settingsDatabase();
     archiveNativeCrashDumps();
+    terminalWindows = registerTerminalWindows(maybeQuitAfterWindowClosed);
     registerApplication(showWindow);
     ipcMain.on(APP_TITLE_BAR_OVERLAY, (event, colors: TitleBarOverlayColors) => {
       if (process.platform === "darwin") {
         return;
       }
-      titleBarOverlayColors = colors;
       const window = BrowserWindow.fromWebContents(event.sender);
-      window?.setTitleBarOverlay({ ...colors, height: TITLE_BAR_OVERLAY_HEIGHT });
+      if (window !== null && (window === mainWindow || terminalWindows?.has(window) === true)) {
+        applyTitleBarOverlayColors(window, colors);
+      }
     });
     registerDaemonBridge();
     registerSetup(() => daemonState.retryConnection());
