@@ -92,11 +92,6 @@ importers:
       vite:
         specifier: ^7.3.6
         version: 7.3.6(@types/node@26.1.1)(jiti@2.7.0)(tsx@4.23.0)
-    optionalDependencies:
-      '@sing-box/windows-share':
-        specifier: link:native/windows-share
-        version: link:native/windows-share
-
 packages:
 
   '@babel/code-frame@7.29.7':
