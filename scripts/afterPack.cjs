@@ -4,7 +4,10 @@ exports.afterPack = async (context) => {
   if (context.electronPlatformName !== "win32") {
     return;
   }
-  for (const relativePath of [["daemon", "sing-box-daemon.exe"]]) {
+  for (const relativePath of [
+    ["daemon", "sing-box-daemon.exe"],
+    ["native", "windows_share.node"],
+  ]) {
     const executablePath = path.join(context.appOutDir, "resources", ...relativePath);
     const signed = await context.packager.signIf(executablePath);
     if (!signed) {

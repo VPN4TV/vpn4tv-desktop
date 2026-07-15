@@ -132,6 +132,7 @@ export function createDesktopHost(): DesktopHost {
         read: (name) => bridge.reports.read(name),
         markRead: (name) => bridge.reports.markRead(name),
         exportFile: (name, options) => bridge.reports.exportFile(name, options),
+        createArchive: (name, options) => bridge.reports.createArchive(name, options),
         remove: (name) => bridge.reports.remove(name),
         removeAll: () => bridge.reports.removeAll(),
       },
@@ -140,6 +141,7 @@ export function createDesktopHost(): DesktopHost {
         read: (name) => bridge.reports.oomRead(name),
         markRead: (name) => bridge.reports.oomMarkRead(name),
         exportFile: (name, options) => bridge.reports.oomExportFile(name, options),
+        createArchive: (name, options) => bridge.reports.oomCreateArchive(name, options),
         remove: (name) => bridge.reports.oomRemove(name),
         removeAll: () => bridge.reports.oomRemoveAll(),
       },
@@ -181,6 +183,12 @@ export function createDesktopHost(): DesktopHost {
     },
     updates: bridge.updates,
     application: {
+      shareFile: async (fileName, data) => {
+        await bridge.app.shareFile(
+          fileName,
+          typeof data === "string" ? new TextEncoder().encode(data) : data,
+        );
+      },
       showMainWindow: () => {
         void bridge.app.showMainWindow();
       },

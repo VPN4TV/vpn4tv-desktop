@@ -56,6 +56,8 @@ win:
       to: daemon
       filter:
         - libcronet.dll
+    - from: bin/windows/${arch}/windows_share.node
+      to: native/windows_share.node
   target:
     - nsis
   artifactName: SFW-${version}-${env.SFW_ARCHITECTURE}.${ext}

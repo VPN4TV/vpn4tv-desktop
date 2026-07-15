@@ -162,6 +162,12 @@ export interface CrashReportExportOptions {
   encrypt: boolean;
 }
 
+export interface ReportArchive {
+  fileName: string;
+  data: Uint8Array;
+  mediaType: string;
+}
+
 export interface OOMReportEntry {
   name: string;
   recordedAt: number;
@@ -179,12 +185,14 @@ export interface ReportsBridge {
   read(name: string): Promise<CrashReportFile[]>;
   markRead(name: string): Promise<void>;
   exportFile(name: string, options?: CrashReportExportOptions): Promise<boolean>;
+  createArchive(name: string, options?: CrashReportExportOptions): Promise<ReportArchive>;
   remove(name: string): Promise<void>;
   removeAll(): Promise<void>;
   oomList(): Promise<OOMReportEntry[]>;
   oomRead(name: string): Promise<OOMReportFile[]>;
   oomMarkRead(name: string): Promise<void>;
   oomExportFile(name: string, options?: CrashReportExportOptions): Promise<boolean>;
+  oomCreateArchive(name: string, options?: CrashReportExportOptions): Promise<ReportArchive>;
   oomRemove(name: string): Promise<void>;
   oomRemoveAll(): Promise<void>;
   triggerAppCrash(type: "js" | "native"): Promise<void>;
@@ -282,6 +290,7 @@ export interface ProfileFileImport {
 
 export interface AppBridge {
   version(): Promise<string>;
+  shareFile(fileName: string, data: Uint8Array): Promise<void>;
   showMainWindow(): Promise<void>;
   closeTrayMenu(): Promise<void>;
   quit(): Promise<void>;

@@ -68,7 +68,7 @@ export function registerDaemonBridge() {
 
   ipcMain.handle(
     DAEMON_UNARY,
-    async (_event, serviceName: string, methodName: string, request: Uint8Array): Promise<UnaryResult> => {
+    async (event, serviceName: string, methodName: string, request: Uint8Array): Promise<UnaryResult> => {
       const method = findMethod(serviceName, methodName);
       if (method === undefined || method.methodKind !== "unary") {
         return { ok: false, error: { code: Code.Unimplemented, message: "unknown method" } };
@@ -79,12 +79,13 @@ export function registerDaemonBridge() {
       }
       try {
         const unaryMethod = method as DescMethodUnary;
+        const input = fromBinary(unaryMethod.input, request);
         const response = await transport.unary(
           unaryMethod,
           undefined,
           undefined,
           undefined,
-          fromBinary(unaryMethod.input, request),
+          input,
         );
         return { ok: true, data: toBinary(unaryMethod.output, response.message) };
       } catch (error) {

@@ -11,6 +11,7 @@ import type {
   OOMReportEntry,
   OOMReportFile,
   ProfilesResult,
+  ReportArchive,
 } from "../shared/ipc";
 import { writeApplicationCacheFile } from "./appCache";
 import * as appReports from "./appReports";
@@ -73,18 +74,15 @@ const handlers: Record<string, (...callArguments: never[]) => Promise<unknown>> 
 
   async exportFile(name: string, options?: CrashReportExportOptions): Promise<boolean> {
     const exportOptions = options ?? { withConfiguration: false, withLog: true, encrypt: false };
-    const route = routeReport(name);
-    if (route.fromApp) {
-      const archive = await appReports.exportArchive(route.bareName, exportOptions);
-      return saveArchive(archive.fileName, archive.data, exportOptions.encrypt);
-    }
-    const archive = await requireDesktopService().exportCrashReport({
-      name: route.bareName,
-      withConfiguration: exportOptions.withConfiguration,
-      withLog: exportOptions.withLog,
-      encrypt: exportOptions.encrypt,
-    });
+    const archive = await createCrashReportArchive(name, exportOptions);
     return saveArchive(archive.fileName, archive.data, exportOptions.encrypt);
+  },
+
+  async createArchive(name: string, options?: CrashReportExportOptions): Promise<ReportArchive> {
+    return createCrashReportArchive(
+      name,
+      options ?? { withConfiguration: false, withLog: true, encrypt: false },
+    );
   },
 
   async remove(name: string): Promise<void> {
@@ -143,13 +141,15 @@ const handlers: Record<string, (...callArguments: never[]) => Promise<unknown>> 
 
   async oomExportFile(name: string, options?: CrashReportExportOptions): Promise<boolean> {
     const exportOptions = options ?? { withConfiguration: false, withLog: true, encrypt: false };
-    const archive = await requireDesktopService().exportOOMReport({
-      name,
-      withConfiguration: exportOptions.withConfiguration,
-      withLog: exportOptions.withLog,
-      encrypt: exportOptions.encrypt,
-    });
+    const archive = await createOOMReportArchive(name, exportOptions);
     return saveArchive(archive.fileName, archive.data, exportOptions.encrypt);
+  },
+
+  async oomCreateArchive(name: string, options?: CrashReportExportOptions): Promise<ReportArchive> {
+    return createOOMReportArchive(
+      name,
+      options ?? { withConfiguration: false, withLog: true, encrypt: false },
+    );
   },
 
   async oomRemove(name: string): Promise<void> {
@@ -160,6 +160,43 @@ const handlers: Record<string, (...callArguments: never[]) => Promise<unknown>> 
     await requireDesktopService().deleteAllOOMReports({});
   },
 };
+
+async function createCrashReportArchive(
+  name: string,
+  options: CrashReportExportOptions,
+): Promise<ReportArchive> {
+  const route = routeReport(name);
+  const archive = route.fromApp
+    ? await appReports.exportArchive(route.bareName, options)
+    : await requireDesktopService().exportCrashReport({
+        name: route.bareName,
+        withConfiguration: options.withConfiguration,
+        withLog: options.withLog,
+        encrypt: options.encrypt,
+      });
+  return {
+    fileName: archive.fileName,
+    data: archive.data,
+    mediaType: options.encrypt ? "application/octet-stream" : "application/zip",
+  };
+}
+
+async function createOOMReportArchive(
+  name: string,
+  options: CrashReportExportOptions,
+): Promise<ReportArchive> {
+  const archive = await requireDesktopService().exportOOMReport({
+    name,
+    withConfiguration: options.withConfiguration,
+    withLog: options.withLog,
+    encrypt: options.encrypt,
+  });
+  return {
+    fileName: archive.fileName,
+    data: archive.data,
+    mediaType: options.encrypt ? "application/octet-stream" : "application/zip",
+  };
+}
 
 async function saveArchive(fileName: string, data: Uint8Array, encrypted: boolean): Promise<boolean> {
   const result = await dialog.showSaveDialog({

@@ -11,6 +11,7 @@ import {
 
 import { findSingBoxDirectory } from "./sing-box";
 import { readApplicationVersion } from "./version";
+import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -265,7 +266,7 @@ async function runWindowsElectronBuilder(
             certificatePassword: signingConfiguration.certificatePassword,
           },
         },
-        nsis: { artifactName },
+        nsis: { artifactName, warningsAsErrors: false },
       },
     });
   } finally {
@@ -317,7 +318,7 @@ async function packageWindowsArchitecture(artifactArchitecture: string) {
   if (architecture === undefined) {
     throw new Error(`unknown Windows architecture: ${artifactArchitecture}`);
   }
-  const stagedPaths = ["sing-box-daemon.exe"];
+  const stagedPaths = ["sing-box-daemon.exe", "windows_share.node"];
   if (architecture.includesCronet) {
     stagedPaths.push("libcronet.dll");
   }
@@ -404,6 +405,33 @@ async function packageWindows() {
       }
     }),
   );
+  console.info(
+    `[package] building Windows sharing modules: ${selectedArchitectures.map((architecture) => architecture.artifactArchitecture).join(", ")}`,
+  );
+  for (const architecture of selectedArchitectures) {
+    await buildWindowsShareModule(
+      architecture.builderArchitectureName,
+      path.join(
+        repositoryRoot,
+        "bin",
+        "windows",
+        architecture.builderArchitectureName,
+        "windows_share.node",
+      ),
+    );
+  }
+  for (const architecture of selectedArchitectures) {
+    verifyPortableExecutableArchitecture(
+      path.join(
+        repositoryRoot,
+        "bin",
+        "windows",
+        architecture.builderArchitectureName,
+        "windows_share.node",
+      ),
+      architecture.portableExecutableMachine,
+    );
+  }
   const buildEnvironment = {
     ...process.env,
     ELECTRON_BUILDER_DISABLE_BUILD_CACHE: "true",
