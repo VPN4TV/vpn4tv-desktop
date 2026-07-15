@@ -65,8 +65,8 @@ function callSetup<T>(method: string): Promise<T> {
   return callResult(SETUP_CALL, method);
 }
 
-function callCore<T>(method: string): Promise<T> {
-  return callResult(CORE_CALL, method);
+function callCore<T>(method: string, ...callArguments: unknown[]): Promise<T> {
+  return callResult(CORE_CALL, method, ...callArguments);
 }
 
 function callReports<T>(method: string, ...callArguments: unknown[]): Promise<T> {
@@ -127,6 +127,8 @@ const bridge: DesktopBridge = {
   },
   core: {
     info: () => callCore("info"),
+    securitySettings: () => callCore("securitySettings"),
+    setInsecureModeEnabled: (enabled) => callCore("setInsecureModeEnabled", enabled),
     workingDirectory: () => callCore("workingDirectory"),
     destroyWorkingDirectory: () => callCore("destroyWorkingDirectory"),
   },

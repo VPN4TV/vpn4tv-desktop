@@ -148,11 +148,21 @@ function runElevatedWindows(commandArguments: string[]): Promise<number> {
   const argumentList = commandArguments.map(windowsCommandLineQuote).join(" ");
   const script = [
     "try {",
-    `$process = Start-Process -FilePath ${powerShellQuote(daemonBinaryPath())} -ArgumentList ${powerShellQuote(argumentList)} -Verb RunAs -Wait -PassThru`,
+    "$startInfo = [System.Diagnostics.ProcessStartInfo]::new()",
+    `$startInfo.FileName = ${powerShellQuote(daemonBinaryPath())}`,
+    `$startInfo.Arguments = ${powerShellQuote(argumentList)}`,
+    "$startInfo.UseShellExecute = $true",
+    "$startInfo.Verb = 'runas'",
+    "$process = [System.Diagnostics.Process]::Start($startInfo)",
+    "$process.WaitForExit()",
     "exit $process.ExitCode",
     "} catch {",
-    "if ($_.Exception.InnerException -is [System.ComponentModel.Win32Exception] -and $_.Exception.InnerException.NativeErrorCode -eq 1223) {",
+    "$exception = $_.Exception",
+    "while ($null -ne $exception) {",
+    "if ($exception -is [System.ComponentModel.Win32Exception] -and $exception.NativeErrorCode -eq 1223) {",
     `exit ${EXIT_CODE_CANCELLED}`,
+    "}",
+    "$exception = $exception.InnerException",
     "}",
     `exit ${EXIT_CODE_LAUNCH_FAILED}`,
     "}",
@@ -171,6 +181,25 @@ function runElevatedWindows(commandArguments: string[]): Promise<number> {
       },
     );
   });
+}
+
+export async function runElevatedWindowsServiceCommand(
+  commandArguments: string[],
+): Promise<boolean> {
+  if (process.platform !== "win32") {
+    throw new Error("elevated Windows service commands are not supported on this platform");
+  }
+  const exitCode = await runElevatedWindows(commandArguments);
+  if (exitCode === 0) {
+    return true;
+  }
+  if (exitCode === EXIT_CODE_CANCELLED) {
+    return false;
+  }
+  if (exitCode === EXIT_CODE_LAUNCH_FAILED) {
+    throw new Error("failed to launch the elevated service command");
+  }
+  throw new Error(`service command failed with exit code ${exitCode}`);
 }
 
 async function repair(action: "install" | "start", onRepaired: () => void): Promise<boolean> {

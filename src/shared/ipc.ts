@@ -148,8 +148,15 @@ export interface CoreInfo {
   version: string;
 }
 
+export interface CoreSecuritySettings {
+  available: boolean;
+  insecureModeEnabled: boolean;
+}
+
 export interface CoreBridge {
   info(): Promise<CoreInfo>;
+  securitySettings(): Promise<CoreSecuritySettings>;
+  setInsecureModeEnabled(enabled: boolean): Promise<void>;
   workingDirectory(): Promise<WorkingDirectoryInfo>;
   destroyWorkingDirectory(): Promise<void>;
 }

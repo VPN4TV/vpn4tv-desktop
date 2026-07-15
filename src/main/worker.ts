@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ApplicationService } from "../shared/gen/experimental/boxdd/desktop_service_pb";
+import { localeInterceptor } from "./locale";
 import { daemonBinaryPath } from "./repair";
 
 // A plain stdio transport (HTTP/2 over the child's standard streams) was
@@ -101,6 +102,7 @@ function spawnWorker(): Promise<WorkerProcess> {
         exitError,
         applicationTransport: createGrpcTransport({
           baseUrl: "http://sing-box-worker",
+          interceptors: [localeInterceptor],
           nodeOptions: {
             createConnection: () => net.connect({ path: endpoint }),
           },
@@ -110,6 +112,7 @@ function spawnWorker(): Promise<WorkerProcess> {
             ? null
             : createGrpcTransport({
                 baseUrl: "http://sing-box",
+                interceptors: [localeInterceptor],
                 nodeOptions: {
                   createConnection: () => net.connect({ path: daemonRelayEndpoint }),
                 },

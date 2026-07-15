@@ -1,4 +1,6 @@
-export type DesktopLanguage = "en" | "zh-Hans" | "zh-Hant" | "fa" | "ru";
+export const DESKTOP_LANGUAGES = ["en", "zh-Hans", "zh-Hant", "fa", "ru"] as const;
+
+export type DesktopLanguage = (typeof DESKTOP_LANGUAGES)[number];
 
 type DesktopMessage = Record<Exclude<DesktopLanguage, "en">, string>;
 

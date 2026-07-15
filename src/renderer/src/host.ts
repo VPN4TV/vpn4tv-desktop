@@ -129,6 +129,8 @@ export function createDesktopHost(): DesktopHost {
     },
     core: {
       info: () => bridge.core.info(),
+      securitySettings: () => bridge.core.securitySettings(),
+      setInsecureModeEnabled: (enabled) => bridge.core.setInsecureModeEnabled(enabled),
       workingDirectory: () => bridge.core.workingDirectory(),
       destroyWorkingDirectory: () => bridge.core.destroyWorkingDirectory(),
     },

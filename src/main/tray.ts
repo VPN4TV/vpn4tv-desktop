@@ -5,6 +5,8 @@ import { ServiceStatus_Type } from "../shared/gen/daemon/started_service_pb";
 import { desktopLanguageFromLocale, translateDesktop } from "../shared/translations";
 import type { DesktopMessageKey } from "../shared/translations";
 import { managedService, startedService } from "./daemon";
+import { preferredLocale } from "./locale";
+import { onPreferenceChanged } from "./preferences";
 import { onProfilesChanged, profilesState, selectProfile, startSelectedProfile } from "./profiles";
 import { resourcePath } from "./resources";
 import { daemonState } from "./state";
@@ -14,7 +16,7 @@ let tray: Tray | null = null;
 let openWindow: () => void = () => {};
 
 function translate(key: DesktopMessageKey): string {
-  return translateDesktop(desktopLanguageFromLocale(app.getLocale()), key);
+  return translateDesktop(desktopLanguageFromLocale(preferredLocale()), key);
 }
 
 function ignoreErrors(promise: Promise<unknown> | undefined) {
@@ -117,6 +119,11 @@ export function initializeTray(open: () => void) {
   if (process.platform !== "win32") {
     daemonState.on("change", rebuildTrayMenu);
     onProfilesChanged(rebuildTrayMenu);
+    onPreferenceChanged((name) => {
+      if (name === "language") {
+        rebuildTrayMenu();
+      }
+    });
   }
   daemonState.start();
 }
