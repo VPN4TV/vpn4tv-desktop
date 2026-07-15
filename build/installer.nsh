@@ -30,29 +30,40 @@ SetFont "Segoe UI" 9
   Var unsafeInstallationAncestor
   Var resetWorkingDirectory
   Var workingDirectory
-  Var existingInstallationActionDialog
+  Var installationActionDialog
   Var updateExistingInstallationRadio
   Var reinstallExistingInstallationRadio
   Var reinstallExistingInstallation
+  Var standardInstallationRadio
+  Var customInstallationRadio
+  Var customInstallation
   Var applicationDataDirectory
   Var previousApplicationDataDirectory
+  Var defaultApplicationDataDirectory
+  Var fixedApplicationDataDirectory
+  Var userApplicationDataDirectory
+  Var userIndependentApplicationData
+  Var userIndependentApplicationDataCheckbox
   Var applicationDataDirectoryInput
   Var applicationDataDirectoryBrowseButton
   Var daemonDataDirectory
   Var previousDaemonDataDirectory
+  Var defaultDaemonDataDirectory
   Var daemonDataDirectoryInput
   Var daemonDataDirectoryBrowseButton
   Var dataDirectoriesDialog
+  Var defaultInstallationDirectory
   Var installationDirectoryInput
   Var installationDirectoryBrowseButton
   Var migrateExistingData
   Var migrateExistingDataCheckbox
+  Var migrateLegacyApplicationData
   Var dataTransitionStatePath
   Var hasExistingInstallation
   Var hasInstallationLayout
   Var installationID
   Var previousInstallationID
-  Var installationFailureButtonText
+  Var installationFailureTimer
   Var finishRunCheckbox
   Var dataMigrationPrepared
 
@@ -97,9 +108,9 @@ FunctionEnd
 
   !ifndef BUILD_UNINSTALLER
     Function .onInstFailed
-      ${if} $installationFailureButtonText != ""
-        System::Free $installationFailureButtonText
-        StrCpy $installationFailureButtonText ""
+      ${if} $installationFailureTimer != ""
+        ${StdUtils.TimerDestroy} $0 $installationFailureTimer
+        StrCpy $installationFailureTimer ""
       ${endif}
     FunctionEnd
 
@@ -191,6 +202,24 @@ FunctionEnd
   LangString reinstallExistingInstallation ${LANG_FARSI} "نصب دوباره"
   LangString reinstallExistingInstallation ${LANG_RUSSIAN} "Переустановить"
 
+  LangString installationMethodPageTitle ${LANG_ENGLISH} "Installation type"
+  LangString installationMethodPageTitle ${LANG_SIMPCHINESE} "安装方式"
+  LangString installationMethodPageTitle ${LANG_TRADCHINESE} "安裝方式"
+  LangString installationMethodPageTitle ${LANG_FARSI} "نوع نصب"
+  LangString installationMethodPageTitle ${LANG_RUSSIAN} "Тип установки"
+
+  LangString standardInstallation ${LANG_ENGLISH} "Install"
+  LangString standardInstallation ${LANG_SIMPCHINESE} "安装"
+  LangString standardInstallation ${LANG_TRADCHINESE} "安裝"
+  LangString standardInstallation ${LANG_FARSI} "نصب"
+  LangString standardInstallation ${LANG_RUSSIAN} "Установить"
+
+  LangString customInstallation ${LANG_ENGLISH} "Custom install"
+  LangString customInstallation ${LANG_SIMPCHINESE} "自定义安装"
+  LangString customInstallation ${LANG_TRADCHINESE} "自訂安裝"
+  LangString customInstallation ${LANG_FARSI} "نصب سفارشی"
+  LangString customInstallation ${LANG_RUSSIAN} "Выборочная установка"
+
   LangString dataDirectoriesPageTitle ${LANG_ENGLISH} "Installation locations"
   LangString dataDirectoriesPageTitle ${LANG_SIMPCHINESE} "安装位置"
   LangString dataDirectoriesPageTitle ${LANG_TRADCHINESE} "安裝位置"
@@ -208,6 +237,12 @@ FunctionEnd
   LangString applicationDataDirectoryLabel ${LANG_TRADCHINESE} "應用程式資料目錄："
   LangString applicationDataDirectoryLabel ${LANG_FARSI} "پوشهٔ دادهٔ برنامه:"
   LangString applicationDataDirectoryLabel ${LANG_RUSSIAN} "Каталог данных приложения:"
+
+  LangString userIndependentApplicationData ${LANG_ENGLISH} "Use a separate application data directory for each user"
+  LangString userIndependentApplicationData ${LANG_SIMPCHINESE} "为每个用户使用独立的应用数据目录"
+  LangString userIndependentApplicationData ${LANG_TRADCHINESE} "為每個使用者使用獨立的應用程式資料目錄"
+  LangString userIndependentApplicationData ${LANG_FARSI} "استفاده از پوشهٔ دادهٔ برنامهٔ جداگانه برای هر کاربر"
+  LangString userIndependentApplicationData ${LANG_RUSSIAN} "Отдельный каталог данных приложения для каждого пользователя"
 
   LangString daemonDataDirectoryLabel ${LANG_ENGLISH} "Daemon data directory:"
   LangString daemonDataDirectoryLabel ${LANG_SIMPCHINESE} "守护进程数据目录："
@@ -666,14 +701,18 @@ FunctionEnd
   StrCpy $unsafeInstallationAncestor ""
   StrCpy $resetWorkingDirectory 0
   StrCpy $reinstallExistingInstallation 0
+  StrCpy $customInstallation 0
   StrCpy $migrateExistingData ${BST_CHECKED}
+  StrCpy $migrateLegacyApplicationData 0
   StrCpy $applicationDataDirectory ""
   StrCpy $previousApplicationDataDirectory ""
+  StrCpy $fixedApplicationDataDirectory ""
+  StrCpy $userIndependentApplicationData ${BST_UNCHECKED}
   StrCpy $hasExistingInstallation 0
   StrCpy $hasInstallationLayout 0
   StrCpy $installationID ""
   StrCpy $previousInstallationID ""
-  StrCpy $installationFailureButtonText ""
+  StrCpy $installationFailureTimer ""
   StrCpy $dataMigrationPrepared 0
   SetShellVarContext all
   StrCpy $daemonDataDirectory "$APPDATA\sing-box-daemon"
@@ -689,6 +728,10 @@ FunctionEnd
   ReadRegStr $0 HKLM "${INSTALL_REGISTRY_KEY}" "InstallLocation"
   ${if} $0 != ""
     StrCpy $hasExistingInstallation 1
+  ${endif}
+  ${if} $hasExistingInstallation == 1
+  ${andif} $hasInstallationLayout == 0
+    StrCpy $migrateLegacyApplicationData 1
   ${endif}
   ${if} $installationID == ""
     System::Call 'ole32::CoCreateGuid(g .s)'
@@ -722,6 +765,19 @@ FunctionEnd
       StrCpy $daemonDataDirectory $R1
     ${endif}
   ${endif}
+  ${if} $applicationDataDirectory == ""
+    StrCpy $fixedApplicationDataDirectory "$APPDATA\sing-box"
+    StrCpy $userIndependentApplicationData ${BST_CHECKED}
+  ${else}
+    StrCpy $fixedApplicationDataDirectory $applicationDataDirectory
+    StrCpy $userIndependentApplicationData ${BST_UNCHECKED}
+  ${endif}
+  SetShellVarContext current
+  StrCpy $userApplicationDataDirectory "$APPDATA\sing-box"
+  SetShellVarContext all
+  StrCpy $defaultInstallationDirectory $INSTDIR
+  StrCpy $defaultApplicationDataDirectory $applicationDataDirectory
+  StrCpy $defaultDaemonDataDirectory $daemonDataDirectory
   StrCpy $workingDirectory $daemonDataDirectory
   StrCpy $dataTransitionStatePath "$APPDATA\sing-box-installer\data-transition.json"
   InitPluginsDir
@@ -739,55 +795,78 @@ FunctionEnd
 !macroend
 
 !macro customWelcomePage
-  Page custom showExistingInstallationActionPage leaveExistingInstallationActionPage
+  Page custom showInstallationActionPage leaveInstallationActionPage
 
-  Function showExistingInstallationActionPage
-    ${if} $hasExistingInstallation == 0
-      Abort
-    ${endif}
+  Function showInstallationActionPage
     Call restoreInstallerNavigation
     GetDlgItem $0 $HWNDPARENT 3
     ShowWindow $0 ${SW_HIDE}
-    !insertmacro MUI_HEADER_TEXT "$(existingInstallationPageTitle)" "$(existingInstallationPageSubtitle)"
     nsDialogs::Create 1018
-    Pop $existingInstallationActionDialog
-    ${if} $existingInstallationActionDialog == error
+    Pop $installationActionDialog
+    ${if} $installationActionDialog == error
       Abort
     ${endif}
 
-    ${NSD_CreateRadioButton} 0u 0u 100% 14u "$(updateExistingInstallation)"
-    Pop $updateExistingInstallationRadio
-
-    ${NSD_CreateRadioButton} 0u 14u 100% 14u "$(reinstallExistingInstallation)"
-    Pop $reinstallExistingInstallationRadio
-
-    ${if} $reinstallExistingInstallation == 1
-      ${NSD_SetState} $reinstallExistingInstallationRadio ${BST_CHECKED}
+    ${if} $hasExistingInstallation == 1
+      !insertmacro MUI_HEADER_TEXT "$(existingInstallationPageTitle)" "$(existingInstallationPageSubtitle)"
+      ${NSD_CreateRadioButton} 0u 0u 100% 14u "$(updateExistingInstallation)"
+      Pop $updateExistingInstallationRadio
+      ${NSD_CreateRadioButton} 0u 14u 100% 14u "$(reinstallExistingInstallation)"
+      Pop $reinstallExistingInstallationRadio
+      ${if} $reinstallExistingInstallation == 1
+        ${NSD_SetState} $reinstallExistingInstallationRadio ${BST_CHECKED}
+      ${else}
+        ${NSD_SetState} $updateExistingInstallationRadio ${BST_CHECKED}
+      ${endif}
     ${else}
-      ${NSD_SetState} $updateExistingInstallationRadio ${BST_CHECKED}
+      !insertmacro MUI_HEADER_TEXT "$(installationMethodPageTitle)" "$(existingInstallationPageSubtitle)"
+      ${NSD_CreateRadioButton} 0u 0u 100% 14u "$(standardInstallation)"
+      Pop $standardInstallationRadio
+      ${NSD_CreateRadioButton} 0u 14u 100% 14u "$(customInstallation)"
+      Pop $customInstallationRadio
+      ${if} $customInstallation == 1
+        ${NSD_SetState} $customInstallationRadio ${BST_CHECKED}
+      ${else}
+        ${NSD_SetState} $standardInstallationRadio ${BST_CHECKED}
+      ${endif}
     ${endif}
     nsDialogs::Show
   FunctionEnd
 
-  Function leaveExistingInstallationActionPage
-    ${NSD_GetState} $reinstallExistingInstallationRadio $0
-    ${if} $0 == ${BST_CHECKED}
-      StrCpy $reinstallExistingInstallation 1
+  Function leaveInstallationActionPage
+    ${if} $hasExistingInstallation == 1
+      ${NSD_GetState} $reinstallExistingInstallationRadio $0
+      ${if} $0 == ${BST_CHECKED}
+        StrCpy $reinstallExistingInstallation 1
+      ${else}
+        StrCpy $reinstallExistingInstallation 0
+        StrCpy $applicationDataDirectory $previousApplicationDataDirectory
+        StrCpy $daemonDataDirectory $previousDaemonDataDirectory
+        ${if} $applicationDataDirectory == ""
+          StrCpy $userIndependentApplicationData ${BST_CHECKED}
+        ${else}
+          StrCpy $fixedApplicationDataDirectory $applicationDataDirectory
+          StrCpy $userIndependentApplicationData ${BST_UNCHECKED}
+        ${endif}
+      ${endif}
     ${else}
-      StrCpy $reinstallExistingInstallation 0
-      StrCpy $applicationDataDirectory $previousApplicationDataDirectory
-      StrCpy $daemonDataDirectory $previousDaemonDataDirectory
+      ${NSD_GetState} $customInstallationRadio $0
+      ${if} $0 == ${BST_CHECKED}
+        StrCpy $customInstallation 1
+      ${else}
+        StrCpy $customInstallation 0
+        StrCpy $INSTDIR $defaultInstallationDirectory
+        StrCpy $applicationDataDirectory $defaultApplicationDataDirectory
+        StrCpy $daemonDataDirectory $defaultDaemonDataDirectory
+        ${if} $applicationDataDirectory == ""
+          StrCpy $userIndependentApplicationData ${BST_CHECKED}
+        ${else}
+          StrCpy $fixedApplicationDataDirectory $applicationDataDirectory
+          StrCpy $userIndependentApplicationData ${BST_UNCHECKED}
+        ${endif}
+        StrCpy $workingDirectory $daemonDataDirectory
+      ${endif}
     ${endif}
-  FunctionEnd
-
-  Function showLicensePage
-    GetDlgItem $0 $HWNDPARENT 3
-    ShowWindow $0 ${SW_HIDE}
-  FunctionEnd
-
-  Function leaveLicensePage
-    GetDlgItem $0 $HWNDPARENT 3
-    ShowWindow $0 ${SW_SHOW}
   FunctionEnd
 
   Function skipAcceptedLicensePage
@@ -797,8 +876,6 @@ FunctionEnd
     ${endif}
   FunctionEnd
 
-  !define MUI_PAGE_CUSTOMFUNCTION_SHOW showLicensePage
-  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE leaveLicensePage
 !macroend
 
 !macro executeInstallationPreflight OPTIONS
@@ -818,7 +895,11 @@ FunctionEnd
 !macroend
 
 !macro executeDataTransition OPERATION
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-data.ps1" -Operation ${OPERATION} -StatePath "$dataTransitionStatePath" -PreviousApplicationDataDirectory "$previousApplicationDataDirectory" -ApplicationDataDirectory "$applicationDataDirectory" -PreviousDaemonDataDirectory "$previousDaemonDataDirectory" -DaemonDataDirectory "$daemonDataDirectory" -PreviousInstallationID "$previousInstallationID" -InstallationID "$installationID"'
+  StrCpy $3 ""
+  ${if} $migrateLegacyApplicationData == 1
+    StrCpy $3 "-MigrateLegacyApplicationData"
+  ${endif}
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-data.ps1" -Operation ${OPERATION} -StatePath "$dataTransitionStatePath" -PreviousApplicationDataDirectory "$previousApplicationDataDirectory" -ApplicationDataDirectory "$applicationDataDirectory" -PreviousDaemonDataDirectory "$previousDaemonDataDirectory" -DaemonDataDirectory "$daemonDataDirectory" -PreviousInstallationID "$previousInstallationID" -InstallationID "$installationID" $3'
   Pop $1
   Pop $0
 !macroend
@@ -832,6 +913,9 @@ FunctionEnd
     ${if} $hasExistingInstallation == 1
     ${andif} $reinstallExistingInstallation == 0
       Abort
+    ${elseif} $hasExistingInstallation == 0
+    ${andif} $customInstallation == 0
+      Abort
     ${endif}
     Call restoreInstallerNavigation
     !insertmacro MUI_HEADER_TEXT "$(dataDirectoriesPageTitle)" "$(dataDirectoriesPageSubtitle)"
@@ -839,10 +923,6 @@ FunctionEnd
     Pop $dataDirectoriesDialog
     ${if} $dataDirectoriesDialog == error
       Abort
-    ${endif}
-
-    ${if} $applicationDataDirectory == ""
-      StrCpy $applicationDataDirectory "$APPDATA\sing-box"
     ${endif}
 
     ${NSD_CreateLabel} 0u 0u 100% 12u "$(installationDirectoryLabel)"
@@ -853,16 +933,30 @@ FunctionEnd
     Pop $installationDirectoryBrowseButton
     ${NSD_OnClick} $installationDirectoryBrowseButton browseInstallationDirectory
 
-    StrCpy $0 38
+    ${NSD_CreateCheckBox} 0u 38u 100% 12u "$(userIndependentApplicationData)"
+    Pop $userIndependentApplicationDataCheckbox
+    ${NSD_SetState} $userIndependentApplicationDataCheckbox $userIndependentApplicationData
+    ${NSD_OnClick} $userIndependentApplicationDataCheckbox updateApplicationDataDirectoryMode
+
+    StrCpy $0 56
     ${NSD_CreateLabel} 0u $0u 100% 12u "$(applicationDataDirectoryLabel)"
     Pop $1
     IntOp $0 $0 + 16
-    ${NSD_CreateDirRequest} 0u $0u 76% 13u "$applicationDataDirectory"
+    ${if} $userIndependentApplicationData == ${BST_CHECKED}
+      StrCpy $1 $userApplicationDataDirectory
+    ${else}
+      StrCpy $1 $fixedApplicationDataDirectory
+    ${endif}
+    ${NSD_CreateDirRequest} 0u $0u 76% 13u "$1"
     Pop $applicationDataDirectoryInput
     IntOp $0 $0 - 1
     ${NSD_CreateBrowseButton} 78% $0u 22% 15u "$(browseDirectoryButton)"
     Pop $applicationDataDirectoryBrowseButton
     ${NSD_OnClick} $applicationDataDirectoryBrowseButton browseApplicationDataDirectory
+    ${if} $userIndependentApplicationData == ${BST_CHECKED}
+      EnableWindow $applicationDataDirectoryInput 0
+      EnableWindow $applicationDataDirectoryBrowseButton 0
+    ${endif}
 
     IntOp $0 $0 + 27
     ${NSD_CreateLabel} 0u $0u 100% 12u "$(daemonDataDirectoryLabel)"
@@ -891,11 +985,17 @@ FunctionEnd
     ${if} $INSTDIR == ""
       Abort
     ${endif}
-    ${NSD_GetText} $applicationDataDirectoryInput $applicationDataDirectory
-    ${if} $applicationDataDirectory == ""
-      StrCpy $0 ""
-      MessageBox MB_OK|MB_ICONSTOP "$(invalidApplicationDataDirectory)"
-      Abort
+    ${NSD_GetState} $userIndependentApplicationDataCheckbox $userIndependentApplicationData
+    ${if} $userIndependentApplicationData == ${BST_CHECKED}
+      StrCpy $applicationDataDirectory ""
+    ${else}
+      ${NSD_GetText} $applicationDataDirectoryInput $applicationDataDirectory
+      ${if} $applicationDataDirectory == ""
+        StrCpy $0 ""
+        MessageBox MB_OK|MB_ICONSTOP "$(invalidApplicationDataDirectory)"
+        Abort
+      ${endif}
+      StrCpy $fixedApplicationDataDirectory $applicationDataDirectory
     ${endif}
     ${NSD_GetText} $daemonDataDirectoryInput $daemonDataDirectory
     ${if} $daemonDataDirectory == ""
@@ -917,6 +1017,21 @@ FunctionEnd
     Pop $0
     ${if} $0 != error
       ${NSD_SetText} $applicationDataDirectoryInput $0
+    ${endif}
+  FunctionEnd
+
+  Function updateApplicationDataDirectoryMode
+    Pop $0
+    ${NSD_GetState} $userIndependentApplicationDataCheckbox $userIndependentApplicationData
+    ${if} $userIndependentApplicationData == ${BST_CHECKED}
+      ${NSD_GetText} $applicationDataDirectoryInput $fixedApplicationDataDirectory
+      ${NSD_SetText} $applicationDataDirectoryInput $userApplicationDataDirectory
+      EnableWindow $applicationDataDirectoryInput 0
+      EnableWindow $applicationDataDirectoryBrowseButton 0
+    ${else}
+      ${NSD_SetText} $applicationDataDirectoryInput $fixedApplicationDataDirectory
+      EnableWindow $applicationDataDirectoryInput 1
+      EnableWindow $applicationDataDirectoryBrowseButton 1
     ${endif}
   FunctionEnd
 
@@ -1272,22 +1387,23 @@ FunctionEnd
     SendMessage $HWNDPARENT ${WM_COMMAND} 1 0
   FunctionEnd
 
-  Function showInstallationFailureFinishButton
+  Function scheduleInstallationFailureState
     ${if} ${Abort}
-      GetDlgItem $0 $HWNDPARENT 2
-      System::Call '*(&t64 "$(MUI_BUTTONTEXT_FINISH)") p.r1'
-      ${if} $1 != 0
-        System::Call 'user32::PostMessage(p r0, i ${WM_SETTEXT}, p 0, p r1) i.r2'
-        ${if} $2 != 0
-          StrCpy $installationFailureButtonText $1
-        ${else}
-          System::Free $1
-        ${endif}
-      ${endif}
+      ${StdUtils.TimerCreate} $installationFailureTimer applyInstallationFailureState 1
     ${endif}
   FunctionEnd
 
-  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE showInstallationFailureFinishButton
+  Function applyInstallationFailureState
+    ${StdUtils.TimerDestroy} $0 $installationFailureTimer
+    StrCpy $installationFailureTimer ""
+    GetDlgItem $0 $HWNDPARENT 2
+    SendMessage $0 ${WM_SETTEXT} 0 "STR:$(MUI_BUTTONTEXT_FINISH)"
+    FindWindow $0 "#32770" "" $HWNDPARENT
+    GetDlgItem $0 $0 1004
+    SendMessage $0 ${PBM_SETSTATE} ${PBST_ERROR} 0
+  FunctionEnd
+
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE scheduleInstallationFailureState
 !macroend
 
 !macro customInstallBeforeCheckAppRunning
@@ -1366,6 +1482,8 @@ FunctionEnd
   StrCpy $2 0
   ${if} $reinstallExistingInstallation == 1
     StrCpy $2 1
+  ${elseif} $migrateLegacyApplicationData == 1
+    StrCpy $2 1
   ${elseif} $hasExistingInstallation == 0
   ${andif} $hasInstallationLayout == 1
     StrCpy $2 1
@@ -1429,7 +1547,11 @@ FunctionEnd
   !insertmacro setInstallationLayoutRegistryView
   WriteRegDWORD HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "LayoutVersion" 2
   WriteRegStr HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "InstallationID" "$installationID"
-  WriteRegStr HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "ApplicationDataDirectory" "$applicationDataDirectory"
+  ${if} $applicationDataDirectory == ""
+    DeleteRegValue HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "ApplicationDataDirectory"
+  ${else}
+    WriteRegStr HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "ApplicationDataDirectory" "$applicationDataDirectory"
+  ${endif}
   WriteRegStr HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "DaemonDataDirectory" "$daemonDataDirectory"
   !insertmacro restoreInstallerRegistryView
   ${if} $dataMigrationPrepared == 1

@@ -1,5 +1,5 @@
 import { app } from "electron";
-import { existsSync, mkdirSync, renameSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { readWindowsInstallationLayout } from "./installationLayout";
@@ -16,7 +16,6 @@ export function configureApplicationPaths(developmentUserDataPath: string): Appl
     return configuredPaths;
   }
   const defaultUserDataPath = join(app.getPath("appData"), "sing-box");
-  const legacyUserDataPath = join(app.getPath("appData"), "sing-box-for-desktop");
   let paths: ApplicationPaths;
   if (developmentUserDataPath !== "") {
     paths = {
@@ -40,14 +39,6 @@ export function configureApplicationPaths(developmentUserDataPath: string): Appl
           ? "C:\\ProgramData\\sing-box-daemon"
           : "/var/lib/sing-box-daemon",
     };
-  }
-
-  if (
-    paths.userData === defaultUserDataPath &&
-    !existsSync(defaultUserDataPath) &&
-    existsSync(legacyUserDataPath)
-  ) {
-    renameSync(legacyUserDataPath, defaultUserDataPath);
   }
 
   const sessionDataPath = join(paths.userData, "session");

@@ -51,11 +51,12 @@ try {
         )
         if ($configuredApplicationDataDirectory -isnot [string] -or
             $configuredDaemonDataDirectory -isnot [string] -or
-            [string]::IsNullOrWhiteSpace($configuredApplicationDataDirectory) -or
             [string]::IsNullOrWhiteSpace($configuredDaemonDataDirectory)) {
           throw "The sing-box installation layout is invalid."
         }
-        $applicationDataDirectory = $configuredApplicationDataDirectory
+        if (-not [string]::IsNullOrWhiteSpace($configuredApplicationDataDirectory)) {
+          $applicationDataDirectory = $configuredApplicationDataDirectory
+        }
         $daemonDataDirectory = $configuredDaemonDataDirectory
       }
     } finally {

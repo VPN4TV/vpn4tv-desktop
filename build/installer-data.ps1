@@ -9,7 +9,8 @@ param(
     [string]$PreviousDaemonDataDirectory,
     [string]$DaemonDataDirectory,
     [string]$PreviousInstallationID,
-    [string]$InstallationID
+    [string]$InstallationID,
+    [switch]$MigrateLegacyApplicationData
 )
 
 $ErrorActionPreference = "Stop"
@@ -203,6 +204,49 @@ function Copy-VerifiedDirectoryTree([string]$SourcePath, [string]$TargetPath) {
     }
 }
 
+function Set-UserApplicationDataItemAccessControl(
+    [string]$Path,
+    [bool]$Directory,
+    [System.Security.Principal.SecurityIdentifier]$User
+) {
+    if ($Directory) {
+        $security = [System.Security.AccessControl.DirectorySecurity]::new()
+        $inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+            [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    } else {
+        $security = [System.Security.AccessControl.FileSecurity]::new()
+        $inheritance = [System.Security.AccessControl.InheritanceFlags]::None
+    }
+    $security.SetOwner($User)
+    $security.SetAccessRuleProtection($true, $false)
+    $system = [System.Security.Principal.SecurityIdentifier]::new("S-1-5-18")
+    $administrators = [System.Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")
+    foreach ($identity in @($User, $system, $administrators)) {
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $identity,
+            [System.Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+        [void]$security.AddAccessRule($rule)
+    }
+    if ($Directory) {
+        [System.IO.Directory]::SetAccessControl($Path, $security)
+    } else {
+        [System.IO.File]::SetAccessControl($Path, $security)
+    }
+}
+
+function Set-UserApplicationDataAccessControl([string]$Path, [string]$UserID) {
+    $user = [System.Security.Principal.SecurityIdentifier]::new($UserID)
+    $items = @(Get-ChildItem -LiteralPath $Path -Force -Recurse)
+    foreach ($item in ($items | Sort-Object { $_.FullName.Length } -Descending)) {
+        Set-UserApplicationDataItemAccessControl $item.FullName $item.PSIsContainer $user
+    }
+    Set-UserApplicationDataItemAccessControl $Path $true $user
+}
+
 function Remove-NormalDirectoryTree([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) {
         return
@@ -223,6 +267,7 @@ function Get-WindowsProfiles() {
         $profiles[$profileKey.PSChildName] = [PSCustomObject]@{
             UserID = $profileKey.PSChildName
             DataPath = Join-Path $profilePath "AppData\Roaming\sing-box"
+            LegacyDataPath = Join-Path $profilePath "AppData\Roaming\sing-box-for-desktop"
         }
     }
     return $profiles
@@ -299,14 +344,43 @@ function Resolve-DefaultApplicationDataProfile(
     throw "The Windows profile for the application data directory is unavailable."
 }
 
+function Resolve-LegacyApplicationDataProfile([hashtable]$Profiles) {
+    $activeProfile = Get-ActiveWindowsProfile $Profiles
+    if ($null -ne $activeProfile) {
+        if ((Test-Path -LiteralPath $activeProfile.DataPath) -or
+            -not (Test-Path -LiteralPath $activeProfile.LegacyDataPath)) {
+            return $null
+        }
+        return $activeProfile
+    }
+    $profilesWithLegacyData = @($Profiles.Values | Where-Object {
+        -not (Test-Path -LiteralPath $_.DataPath) -and
+            (Test-Path -LiteralPath $_.LegacyDataPath)
+    })
+    if ($profilesWithLegacyData.Count -eq 1) {
+        return $profilesWithLegacyData[0]
+    }
+    if ($profilesWithLegacyData.Count -eq 0) {
+        return $null
+    }
+    throw "The Windows profile for the legacy application data directory is unavailable."
+}
+
 function Get-ApplicationDataCopy(
     [string]$PreviousDirectory,
     [string]$NewDirectory,
-    [string]$PreviousID
+    [string]$PreviousID,
+    [bool]$MigrateLegacyData
 ) {
     $profiles = Get-WindowsProfiles
     $profile = $null
-    if ([string]::IsNullOrWhiteSpace($PreviousDirectory)) {
+    if ($MigrateLegacyData) {
+        $profile = Resolve-LegacyApplicationDataProfile $profiles
+        if ($null -eq $profile) {
+            return $null
+        }
+        $source = $profile.LegacyDataPath
+    } elseif ([string]::IsNullOrWhiteSpace($PreviousDirectory)) {
         $profile = Resolve-DefaultApplicationDataProfile $profiles ""
         if ($null -eq $profile) {
             return $null
@@ -324,24 +398,30 @@ function Get-ApplicationDataCopy(
             $profile = Resolve-DefaultApplicationDataProfile $profiles $source
         }
         $target = $profile.DataPath
+        $targetUserID = $profile.UserID
     } else {
         $target = $NewDirectory
+        $targetUserID = ""
     }
     return [PSCustomObject]@{
         Source = $source
         Target = $target
+        TargetUserID = $targetUserID
     }
 }
 
 function Write-TransitionState([object]$State) {
     $temporaryPath = "$StatePath.new"
+    $backupPath = "$StatePath.old"
     [System.IO.File]::WriteAllText(
         $temporaryPath,
         ($State | ConvertTo-Json -Depth 8),
         [System.Text.UTF8Encoding]::new($false)
     )
     if ([System.IO.File]::Exists($StatePath)) {
-        [System.IO.File]::Replace($temporaryPath, $StatePath, $null)
+        [System.IO.File]::Delete($backupPath)
+        [System.IO.File]::Replace($temporaryPath, $StatePath, $backupPath)
+        [System.IO.File]::Delete($backupPath)
     } else {
         [System.IO.File]::Move($temporaryPath, $StatePath)
     }
@@ -357,6 +437,7 @@ function Read-TransitionState() {
 function Remove-TransitionState() {
     Remove-Item -LiteralPath $StatePath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$StatePath.new" -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$StatePath.old" -Force -ErrorAction SilentlyContinue
     $stateDirectory = Split-Path -Parent $StatePath
     if (Test-DirectoryEmpty $stateDirectory) {
         [System.IO.Directory]::Delete($stateDirectory)
@@ -369,15 +450,13 @@ function Complete-Transition([object]$State) {
         Write-TransitionState $State
     }
     if ($State.ApplicationChanged) {
-        if (-not [string]::IsNullOrWhiteSpace($State.PreviousApplicationDataDirectory)) {
-            Assert-ApplicationDataDirectory `
-                $State.PreviousApplicationDataDirectory `
-                $State.PreviousInstallationID
-            Remove-NormalDirectoryTree $State.PreviousApplicationDataDirectory
-        } else {
-            foreach ($copy in @($State.ApplicationCopies)) {
-                Remove-NormalDirectoryTree $copy.Source
+        foreach ($copy in @($State.ApplicationCopies)) {
+            if (-not [string]::IsNullOrWhiteSpace($State.PreviousApplicationDataDirectory)) {
+                Assert-ApplicationDataDirectory `
+                    $copy.Source `
+                    $State.PreviousInstallationID
             }
+            Remove-NormalDirectoryTree $copy.Source
         }
     }
     if ($State.DaemonChanged) {
@@ -391,15 +470,13 @@ function Undo-Transition([object]$State) {
         throw "A committed data migration cannot be rolled back."
     }
     if ($State.ApplicationChanged) {
-        if (-not [string]::IsNullOrWhiteSpace($State.ApplicationDataDirectory)) {
-            Assert-ApplicationDataDirectory `
-                $State.ApplicationDataDirectory `
-                $State.InstallationID
-            Remove-NormalDirectoryTree $State.ApplicationDataDirectory
-        } else {
-            foreach ($copy in @($State.ApplicationCopies)) {
-                Remove-NormalDirectoryTree $copy.Target
+        foreach ($copy in @($State.ApplicationCopies)) {
+            if (-not [string]::IsNullOrWhiteSpace($State.ApplicationDataDirectory)) {
+                Assert-ApplicationDataDirectory `
+                    $copy.Target `
+                    $State.InstallationID
             }
+            Remove-NormalDirectoryTree $copy.Target
         }
     }
     if ($State.DaemonChanged) {
@@ -440,9 +517,12 @@ try {
     if ([System.IO.File]::Exists($StatePath)) {
         throw "An unfinished data migration already exists."
     }
-    $applicationChanged = -not (Test-SamePath `
-        $PreviousApplicationDataDirectory `
-        $ApplicationDataDirectory)
+    $applicationChanged = (
+        $MigrateLegacyApplicationData -or
+        -not (Test-SamePath `
+            $PreviousApplicationDataDirectory `
+            $ApplicationDataDirectory)
+    )
     $daemonChanged = -not (Test-SamePath `
         $PreviousDaemonDataDirectory `
         $DaemonDataDirectory)
@@ -475,13 +555,17 @@ try {
         $copy = Get-ApplicationDataCopy `
             $PreviousApplicationDataDirectory `
             $ApplicationDataDirectory `
-            $PreviousInstallationID
-        if ($null -ne $copy) {
+            $PreviousInstallationID `
+            $MigrateLegacyApplicationData
+        if ($null -ne $copy -and -not (Test-SamePath $copy.Source $copy.Target)) {
             $state.ApplicationCopies = @($copy)
         }
         Write-TransitionState $state
         foreach ($copy in $state.ApplicationCopies) {
             Copy-VerifiedDirectoryTree $copy.Source $copy.Target
+            if (-not [string]::IsNullOrWhiteSpace($copy.TargetUserID)) {
+                Set-UserApplicationDataAccessControl $copy.Target $copy.TargetUserID
+            }
         }
     }
     if ($daemonChanged -and (Test-Path -LiteralPath $PreviousDaemonDataDirectory)) {
