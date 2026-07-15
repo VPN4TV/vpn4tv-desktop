@@ -52,6 +52,7 @@ SetFont "Segoe UI" 9
   Var daemonDataDirectoryInput
   Var daemonDataDirectoryBrowseButton
   Var dataDirectoriesDialog
+  Var installerHeightExtension
   Var defaultInstallationDirectory
   Var installationDirectoryInput
   Var installationDirectoryBrowseButton
@@ -74,6 +75,23 @@ SetFont "Segoe UI" 9
   !macro showPendingInstallerOperation MESSAGE
     !insertmacro MUI_HEADER_TEXT "${MESSAGE}" ""
     System::Call 'user32::RedrawWindow(p $HWNDPARENT, p 0, p 0, i 0x185) i.r0'
+  !macroend
+
+  !macro resizeWindowHeight WINDOW HEIGHT_EXTENSION
+    System::Call 'user32::GetWindowRect(p${WINDOW}, @r1)'
+    System::Call '*$1(i.r2, i.r3, i.r4, i.r5)'
+    IntOp $4 $4 - $2
+    IntOp $5 $5 - $3
+    IntOp $5 $5 + ${HEIGHT_EXTENSION}
+    System::Call 'user32::SetWindowPos(p${WINDOW}, p0, i0, i0, ir4, ir5, i0x16)'
+  !macroend
+
+  !macro moveWindowDown WINDOW HEIGHT_EXTENSION
+    System::Call 'user32::GetWindowRect(p${WINDOW}, @r1)'
+    System::Call 'user32::MapWindowPoints(p0, p$HWNDPARENT, pr1, i2)'
+    System::Call '*$1(i.r2, i.r3, i, i)'
+    IntOp $3 $3 + ${HEIGHT_EXTENSION}
+    System::Call 'user32::SetWindowPos(p${WINDOW}, p0, ir2, ir3, i0, i0, i0x15)'
   !macroend
 !else
   Var applicationDataDirectory
@@ -909,6 +927,46 @@ FunctionEnd
   Page custom showInstallationDirectoryValidationPage
   Page custom showUnsafeInstallationConfirmationPage
 
+  Function expandInstallerToFitControl
+    Exch $0
+    System::Call 'user32::GetWindowRect(p r0, @r1)'
+    System::Call '*$1(i.r2, i.r3, i.r4, i.r5)'
+    IntOp $6 $5 - $3
+    IntOp $6 $6 / 2
+    IntOp $5 $5 + $6
+    System::Call 'user32::GetWindowRect(p $dataDirectoriesDialog, @r1)'
+    System::Call '*$1(i, i, i, i.r6)'
+    IntOp $installerHeightExtension $5 - $6
+    ${if} $installerHeightExtension <= 0
+      Pop $0
+      Return
+    ${endif}
+
+    !insertmacro resizeWindowHeight $HWNDPARENT $installerHeightExtension
+    !insertmacro resizeWindowHeight $dataDirectoriesDialog $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 1018
+    !insertmacro resizeWindowHeight $0 $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 1044
+    !insertmacro resizeWindowHeight $0 $installerHeightExtension
+
+    GetDlgItem $0 $HWNDPARENT 1035
+    !insertmacro moveWindowDown $0 $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 1045
+    !insertmacro moveWindowDown $0 $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 1256
+    !insertmacro moveWindowDown $0 $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 1028
+    !insertmacro moveWindowDown $0 $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 1
+    !insertmacro moveWindowDown $0 $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 2
+    !insertmacro moveWindowDown $0 $installerHeightExtension
+    GetDlgItem $0 $HWNDPARENT 3
+    !insertmacro moveWindowDown $0 $installerHeightExtension
+    System::Call 'user32::RedrawWindow(p $HWNDPARENT, p0, p0, i0x185)'
+    Pop $0
+  FunctionEnd
+
   Function showDataDirectoriesPage
     ${if} $hasExistingInstallation == 1
     ${andif} $reinstallExistingInstallation == 0
@@ -975,6 +1033,8 @@ FunctionEnd
       ${NSD_CreateCheckBox} 0u $0u 100% 12u "$(migrateExistingData)"
       Pop $migrateExistingDataCheckbox
       ${NSD_SetState} $migrateExistingDataCheckbox $migrateExistingData
+      Push $migrateExistingDataCheckbox
+      Call expandInstallerToFitControl
     ${endif}
 
     nsDialogs::Show
