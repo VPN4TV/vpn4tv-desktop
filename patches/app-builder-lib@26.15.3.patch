@@ -1,15 +1,59 @@
 diff --git a/templates/nsis/installSection.nsh b/templates/nsis/installSection.nsh
-index 4508b2c..415298e 100644
+index 4508b2c..0463c18 100644
 --- a/templates/nsis/installSection.nsh
 +++ b/templates/nsis/installSection.nsh
-@@ -38,3 +38,6 @@ ${ifNot} ${UAC_IsInnerInstance}
+@@ -9,5 +9,8 @@ StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+ # must be called before uninstallOldVersion
+ !insertmacro setLinkVars
+-
++!ifmacrodef customInstallBeforeCheckAppRunning
++  !insertmacro customInstallBeforeCheckAppRunning
++!endif
++
+ !ifdef ONE_CLICK
+   !ifdef HEADER_ICO
+@@ -38,3 +41,6 @@ ${ifNot} ${UAC_IsInnerInstance}
+ !endif
+-
++!ifmacrodef customInstallBeforeInstallationChanges
++  !insertmacro customInstallBeforeInstallationChanges
++!endif
++
+ Var /GLOBAL keepShortcuts
+@@ -52,5 +58,8 @@ ${if} $isTryToKeepShortcuts == "true"
+   ${endIf}
+ ${endif}
+-
++!ifmacrodef customInstallBeforeRemovingPreviousVersion
++  !insertmacro customInstallBeforeRemovingPreviousVersion
++!endif
++
+ !insertmacro uninstallOldVersion SHELL_CONTEXT
+ !insertmacro handleUninstallResult SHELL_CONTEXT
+@@ -65,5 +74,8 @@ SetOutPath $INSTDIR
+   File /oname=uninstallerIcon.ico "${UNINSTALLER_ICON}"
  !endif
 -
 +!ifmacrodef customInstallBeforeApplicationFiles
 +  !insertmacro customInstallBeforeApplicationFiles
 +!endif
 +
- Var /GLOBAL keepShortcuts
+ !insertmacro installApplicationFiles
+ !insertmacro registryAddInstallInfo
+diff --git a/templates/nsis/assistedInstaller.nsh b/templates/nsis/assistedInstaller.nsh
+index 3c6bb19..91f87e8 100644
+--- a/templates/nsis/assistedInstaller.nsh
++++ b/templates/nsis/assistedInstaller.nsh
+@@ -12,4 +12,8 @@
+   !ifmacrodef licensePage
+-    !insertmacro skipPageIfUpdated
++    !ifmacrodef customLicensePagePre
++      !insertmacro customLicensePagePre
++    !else
++      !insertmacro skipPageIfUpdated
++    !endif
+     !insertmacro licensePage
+   !endif
 diff --git a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
 index b0937c5..2c14203 100644
 --- a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
@@ -20,6 +64,9 @@ index b0937c5..2c14203 100644
 -      Quit
 -
        doStopProcess:
+@@ -122 +119 @@
+-      DetailPrint "$(appClosing)"
++      DetailPrint "$(closingApplication)"
 diff --git a/templates/nsis/multiUser.nsh b/templates/nsis/multiUser.nsh
 index 5b95e10..ddc04eb 100644
 --- a/templates/nsis/multiUser.nsh

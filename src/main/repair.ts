@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { SETUP_CALL } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
+import { applicationPaths } from "./applicationPaths";
 
 const EXIT_CODE_CANCELLED = 1223;
 const EXIT_CODE_LAUNCH_FAILED = 1224;
@@ -85,6 +86,28 @@ function powerShellQuote(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+function windowsCommandLineQuote(value: string): string {
+  if (value !== "" && !/[\s"]/u.test(value)) {
+    return value;
+  }
+  let quoted = '"';
+  let backslashes = 0;
+  for (const character of value) {
+    if (character === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (character === '"') {
+      quoted += "\\".repeat(backslashes * 2 + 1) + '"';
+      backslashes = 0;
+      continue;
+    }
+    quoted += "\\".repeat(backslashes) + character;
+    backslashes = 0;
+  }
+  return quoted + "\\".repeat(backslashes * 2) + '"';
+}
+
 const PKEXEC_EXIT_CODE_CANCELLED = 126;
 const PKEXEC_EXIT_CODE_NOT_AUTHORIZED = 127;
 
@@ -122,10 +145,10 @@ function runElevatedLinux(commandArguments: string[]): Promise<number> {
 }
 
 function runElevatedWindows(commandArguments: string[]): Promise<number> {
-  const argumentList = commandArguments.map(powerShellQuote).join(",");
+  const argumentList = commandArguments.map(windowsCommandLineQuote).join(" ");
   const script = [
     "try {",
-    `$process = Start-Process -FilePath ${powerShellQuote(daemonBinaryPath())} -ArgumentList ${argumentList} -Verb RunAs -Wait -PassThru`,
+    `$process = Start-Process -FilePath ${powerShellQuote(daemonBinaryPath())} -ArgumentList ${powerShellQuote(argumentList)} -Verb RunAs -Wait -PassThru`,
     "exit $process.ExitCode",
     "} catch {",
     "if ($_.Exception.InnerException -is [System.ComponentModel.Win32Exception] -and $_.Exception.InnerException.NativeErrorCode -eq 1223) {",
@@ -156,6 +179,9 @@ async function repair(action: "install" | "start", onRepaired: () => void): Prom
   }
   const serviceAction = process.platform === "linux" && action === "install" ? "restart" : action;
   const commandArguments = ["service", serviceAction];
+  if (process.platform === "win32" && action === "install") {
+    commandArguments.push("--working-directory", applicationPaths().daemonData);
+  }
   const exitCode = await (process.platform === "linux"
     ? runElevatedLinux(commandArguments)
     : runElevatedWindows(commandArguments));

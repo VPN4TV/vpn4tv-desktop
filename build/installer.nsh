@@ -3,7 +3,12 @@ SetFont "Segoe UI" 9
 
 !include WinMessages.nsh
 
+!define INSTALLATION_LAYOUT_REGISTRY_KEY "Software\SagerNet\sing-box"
+
 !ifndef BUILD_UNINSTALLER
+  !include StrContains.nsh
+  !define DO_NOT_CREATE_DESKTOP_SHORTCUT
+
   Var allowUnsafeInstallation
   Var installationValidationAllowsUnsafe
   Var installationValidationDialog
@@ -11,17 +16,65 @@ SetFont "Segoe UI" 9
   Var installationValidationRepairable
   Var installationValidationRepairButton
   Var installationValidationUnsafeButton
+  Var installationValidationStatusLabel
+  Var installationValidationProgressBar
+  Var installationValidationProcessHandle
+  Var installationValidationProcessIDPath
+  Var installationValidationOutputPath
+  Var installationValidationResultPath
+  Var installationValidationResult
+  Var installationValidationOutput
   Var unsafeInstallationAcknowledgementCheckbox
   Var unsafeInstallationConfirmationRequested
   Var unsafeInstallationReturnButton
   Var unsafeInstallationAncestor
   Var resetWorkingDirectory
   Var workingDirectory
+  Var existingInstallationActionDialog
+  Var updateExistingInstallationRadio
+  Var reinstallExistingInstallationRadio
+  Var reinstallExistingInstallation
+  Var applicationDataDirectory
+  Var previousApplicationDataDirectory
+  Var applicationDataDirectoryInput
+  Var applicationDataDirectoryBrowseButton
+  Var daemonDataDirectory
+  Var previousDaemonDataDirectory
+  Var daemonDataDirectoryInput
+  Var daemonDataDirectoryBrowseButton
+  Var dataDirectoriesDialog
+  Var installationDirectoryInput
+  Var installationDirectoryBrowseButton
+  Var migrateExistingData
+  Var migrateExistingDataCheckbox
+  Var dataTransitionStatePath
+  Var hasExistingInstallation
+  Var hasInstallationLayout
+  Var installationID
+  Var previousInstallationID
+  Var installationFailureButtonText
+  Var finishRunCheckbox
+  Var dataMigrationPrepared
+
+  !macro customLicensePagePre
+    !define MUI_PAGE_CUSTOMFUNCTION_PRE skipAcceptedLicensePage
+  !macroend
+
+  !macro showPendingInstallerOperation MESSAGE
+    !insertmacro MUI_HEADER_TEXT "${MESSAGE}" ""
+    System::Call 'user32::RedrawWindow(p $HWNDPARENT, p 0, p 0, i 0x185) i.r0'
+  !macroend
+!else
+  Var applicationDataDirectory
+  Var daemonDataDirectory
+  Var installationID
 !endif
 
 !define MUI_CUSTOMFUNCTION_GUIINIT clearBrandingText
 !ifdef BUILD_UNINSTALLER
   !define MUI_CUSTOMFUNCTION_UNGUIINIT un.clearBrandingText
+!else
+  !define MUI_CUSTOMFUNCTION_ABORT cancelInstallationValidation
 !endif
 
 !macro clearBrandingTextControl
@@ -41,6 +94,39 @@ FunctionEnd
 
 !macro customHeader
   !insertmacro MUI_LANGUAGE "Farsi"
+
+  !ifndef BUILD_UNINSTALLER
+    Function .onInstFailed
+      ${if} $installationFailureButtonText != ""
+        System::Free $installationFailureButtonText
+        StrCpy $installationFailureButtonText ""
+      ${endif}
+    FunctionEnd
+
+    Function cancelInstallationValidation
+      ${if} $installationValidationProcessHandle != ""
+        StrCpy $0 $installationValidationProcessHandle
+        System::Call 'kernel32::TerminateProcess(p r0, i 1223)'
+        System::Call 'kernel32::CloseHandle(p r0)'
+        StrCpy $installationValidationProcessHandle ""
+      ${elseif} ${FileExists} "$installationValidationProcessIDPath"
+        ClearErrors
+        FileOpen $0 "$installationValidationProcessIDPath" r
+        ${ifNot} ${Errors}
+          FileRead $0 $1
+          FileClose $0
+          System::Call 'kernel32::OpenProcess(i 0x00000001, i 0, i r1) p.r0'
+          ${if} $0 != 0
+            System::Call 'kernel32::TerminateProcess(p r0, i 1223)'
+            System::Call 'kernel32::CloseHandle(p r0)'
+          ${endif}
+        ${endif}
+      ${endif}
+      Delete "$installationValidationOutputPath"
+      Delete "$installationValidationResultPath"
+      Delete "$installationValidationProcessIDPath"
+    FunctionEnd
+  !endif
 
   LangString win7Required ${LANG_FARSI} "ویندوز ۷ یا بالاتر مورد نیاز است"
   LangString x64WinRequired ${LANG_FARSI} "ویندوز ۶۴ بیتی مورد نیاز است"
@@ -81,15 +167,153 @@ FunctionEnd
   LangString keepData ${LANG_FARSI} "&حفظ داده‌ها"
   LangString keepData ${LANG_RUSSIAN} "&Сохранить данные"
 
+  LangString existingInstallationPageTitle ${LANG_ENGLISH} "Existing installation"
+  LangString existingInstallationPageTitle ${LANG_SIMPCHINESE} "已有安装"
+  LangString existingInstallationPageTitle ${LANG_TRADCHINESE} "現有安裝"
+  LangString existingInstallationPageTitle ${LANG_FARSI} "نصب موجود"
+  LangString existingInstallationPageTitle ${LANG_RUSSIAN} "Существующая установка"
+
+  LangString existingInstallationPageSubtitle ${LANG_ENGLISH} "Choose an installation method."
+  LangString existingInstallationPageSubtitle ${LANG_SIMPCHINESE} "选择安装方式。"
+  LangString existingInstallationPageSubtitle ${LANG_TRADCHINESE} "選擇安裝方式。"
+  LangString existingInstallationPageSubtitle ${LANG_FARSI} "روش نصب را انتخاب کنید."
+  LangString existingInstallationPageSubtitle ${LANG_RUSSIAN} "Выберите способ установки."
+
+  LangString updateExistingInstallation ${LANG_ENGLISH} "Update"
+  LangString updateExistingInstallation ${LANG_SIMPCHINESE} "更新"
+  LangString updateExistingInstallation ${LANG_TRADCHINESE} "更新"
+  LangString updateExistingInstallation ${LANG_FARSI} "به‌روزرسانی"
+  LangString updateExistingInstallation ${LANG_RUSSIAN} "Обновить"
+
+  LangString reinstallExistingInstallation ${LANG_ENGLISH} "Reinstall"
+  LangString reinstallExistingInstallation ${LANG_SIMPCHINESE} "重新安装"
+  LangString reinstallExistingInstallation ${LANG_TRADCHINESE} "重新安裝"
+  LangString reinstallExistingInstallation ${LANG_FARSI} "نصب دوباره"
+  LangString reinstallExistingInstallation ${LANG_RUSSIAN} "Переустановить"
+
+  LangString dataDirectoriesPageTitle ${LANG_ENGLISH} "Installation locations"
+  LangString dataDirectoriesPageTitle ${LANG_SIMPCHINESE} "安装位置"
+  LangString dataDirectoriesPageTitle ${LANG_TRADCHINESE} "安裝位置"
+  LangString dataDirectoriesPageTitle ${LANG_FARSI} "محل‌های نصب"
+  LangString dataDirectoriesPageTitle ${LANG_RUSSIAN} "Расположение установки"
+
+  LangString dataDirectoriesPageSubtitle ${LANG_ENGLISH} "Choose the application installation and data directories."
+  LangString dataDirectoriesPageSubtitle ${LANG_SIMPCHINESE} "选择应用安装目录和数据目录。"
+  LangString dataDirectoriesPageSubtitle ${LANG_TRADCHINESE} "選擇應用程式安裝目錄和資料目錄。"
+  LangString dataDirectoriesPageSubtitle ${LANG_FARSI} "پوشه‌های نصب برنامه و داده را انتخاب کنید."
+  LangString dataDirectoriesPageSubtitle ${LANG_RUSSIAN} "Выберите каталоги установки приложения и данных."
+
+  LangString applicationDataDirectoryLabel ${LANG_ENGLISH} "Application data directory:"
+  LangString applicationDataDirectoryLabel ${LANG_SIMPCHINESE} "应用数据目录："
+  LangString applicationDataDirectoryLabel ${LANG_TRADCHINESE} "應用程式資料目錄："
+  LangString applicationDataDirectoryLabel ${LANG_FARSI} "پوشهٔ دادهٔ برنامه:"
+  LangString applicationDataDirectoryLabel ${LANG_RUSSIAN} "Каталог данных приложения:"
+
+  LangString daemonDataDirectoryLabel ${LANG_ENGLISH} "Daemon data directory:"
+  LangString daemonDataDirectoryLabel ${LANG_SIMPCHINESE} "守护进程数据目录："
+  LangString daemonDataDirectoryLabel ${LANG_TRADCHINESE} "守護程序資料目錄："
+  LangString daemonDataDirectoryLabel ${LANG_FARSI} "پوشهٔ دادهٔ سرویس:"
+  LangString daemonDataDirectoryLabel ${LANG_RUSSIAN} "Каталог данных службы:"
+
+  LangString browseDirectoryButton ${LANG_ENGLISH} "&Browse..."
+  LangString browseDirectoryButton ${LANG_SIMPCHINESE} "浏览(&B)..."
+  LangString browseDirectoryButton ${LANG_TRADCHINESE} "瀏覽(&B)..."
+  LangString browseDirectoryButton ${LANG_FARSI} "&مرور..."
+  LangString browseDirectoryButton ${LANG_RUSSIAN} "&Обзор..."
+
+  LangString installationDirectoryLabel ${LANG_ENGLISH} "Application installation directory:"
+  LangString installationDirectoryLabel ${LANG_SIMPCHINESE} "应用安装目录："
+  LangString installationDirectoryLabel ${LANG_TRADCHINESE} "應用程式安裝目錄："
+  LangString installationDirectoryLabel ${LANG_FARSI} "پوشهٔ نصب برنامه:"
+  LangString installationDirectoryLabel ${LANG_RUSSIAN} "Каталог установки приложения:"
+
+  LangString createDesktopShortcut ${LANG_ENGLISH} "Create a desktop shortcut"
+  LangString createDesktopShortcut ${LANG_SIMPCHINESE} "创建桌面快捷方式"
+  LangString createDesktopShortcut ${LANG_TRADCHINESE} "建立桌面捷徑"
+  LangString createDesktopShortcut ${LANG_FARSI} "ایجاد میان‌بر روی دسکتاپ"
+  LangString createDesktopShortcut ${LANG_RUSSIAN} "Создать ярлык на рабочем столе"
+
+  LangString migrateExistingData ${LANG_ENGLISH} "Migrate existing data when a data directory changes"
+  LangString migrateExistingData ${LANG_SIMPCHINESE} "数据目录改变时迁移现有数据"
+  LangString migrateExistingData ${LANG_TRADCHINESE} "資料目錄變更時遷移現有資料"
+  LangString migrateExistingData ${LANG_FARSI} "انتقال داده‌های موجود هنگام تغییر پوشهٔ داده"
+  LangString migrateExistingData ${LANG_RUSSIAN} "Перенести существующие данные при изменении каталога"
+
+  LangString migratingExistingData ${LANG_ENGLISH} "Migrating existing sing-box data..."
+  LangString migratingExistingData ${LANG_SIMPCHINESE} "正在迁移现有 sing-box 数据..."
+  LangString migratingExistingData ${LANG_TRADCHINESE} "正在遷移現有 sing-box 資料..."
+  LangString migratingExistingData ${LANG_FARSI} "در حال انتقال داده‌های موجود sing-box..."
+  LangString migratingExistingData ${LANG_RUSSIAN} "Перенос существующих данных sing-box..."
+
+  LangString dataMigrationFailed ${LANG_ENGLISH} "Could not migrate the existing data (code $1). No old data was removed."
+  LangString dataMigrationFailed ${LANG_SIMPCHINESE} "无法迁移现有数据（代码 $1）；旧数据未被删除。"
+  LangString dataMigrationFailed ${LANG_TRADCHINESE} "無法遷移現有資料（代碼 $1）；舊資料未被刪除。"
+  LangString dataMigrationFailed ${LANG_FARSI} "انتقال داده‌های موجود ناموفق بود (کد $1). هیچ دادهٔ قدیمی حذف نشد."
+  LangString dataMigrationFailed ${LANG_RUSSIAN} "Не удалось перенести существующие данные (код $1). Старые данные не удалены."
+
+  LangString dataMigrationCleanupFailed ${LANG_ENGLISH} "The data migration completed, but the old data could not be removed (code $1). It will be retried by a later installer."
+  LangString dataMigrationCleanupFailed ${LANG_SIMPCHINESE} "数据迁移已完成，但无法删除旧数据（代码 $1）；后续安装器将重试清理。"
+  LangString dataMigrationCleanupFailed ${LANG_TRADCHINESE} "資料遷移已完成，但無法刪除舊資料（代碼 $1）；後續安裝程式將重試清理。"
+  LangString dataMigrationCleanupFailed ${LANG_FARSI} "انتقال داده کامل شد، اما دادهٔ قدیمی حذف نشد (کد $1). نصب‌کنندهٔ بعدی دوباره تلاش می‌کند."
+  LangString dataMigrationCleanupFailed ${LANG_RUSSIAN} "Перенос завершён, но старые данные удалить не удалось (код $1). Следующий установщик повторит очистку."
+
+  LangString invalidDaemonDataDirectory ${LANG_ENGLISH} "The daemon data directory is unsafe or overlaps the application installation directory:$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_SIMPCHINESE} "守护进程数据目录不安全，或与应用安装目录重叠：$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_TRADCHINESE} "守護程序資料目錄不安全，或與應用程式安裝目錄重疊：$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ سرویس ناامن است یا با پوشهٔ نصب برنامه هم‌پوشانی دارد:$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_RUSSIAN} "Каталог данных службы небезопасен или пересекается с каталогом установки приложения:$\r$\n$0"
+
+  LangString invalidApplicationDataDirectory ${LANG_ENGLISH} "The application data directory is invalid or overlaps the application installation directory or daemon data directory:$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_SIMPCHINESE} "应用数据目录无效，或与应用安装目录、守护进程数据目录重叠：$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_TRADCHINESE} "應用程式資料目錄無效，或與應用程式安裝目錄、守護程序資料目錄重疊：$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ برنامه نامعتبر است یا با پوشهٔ نصب برنامه یا پوشهٔ دادهٔ سرویس هم‌پوشانی دارد:$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_RUSSIAN} "Каталог данных приложения недопустим или пересекается с каталогом установки приложения либо каталогом данных службы:$\r$\n$0"
+
   LangString stoppingService ${LANG_ENGLISH} "Stopping the sing-box service..."
-  LangString stoppingService ${LANG_SIMPCHINESE} "正在停止 sing-box 服务..."
-  LangString stoppingService ${LANG_TRADCHINESE} "正在停止 sing-box 服務..."
+  LangString stoppingService ${LANG_SIMPCHINESE} "正在停止 sing-box 守护进程..."
+  LangString stoppingService ${LANG_TRADCHINESE} "正在停止 sing-box 守護程序..."
   LangString stoppingService ${LANG_FARSI} "در حال توقف سرویس sing-box..."
   LangString stoppingService ${LANG_RUSSIAN} "Остановка службы sing-box..."
 
+  LangString checkingRunningApplication ${LANG_ENGLISH} "Checking for running sing-box applications..."
+  LangString checkingRunningApplication ${LANG_SIMPCHINESE} "正在检查运行中的 sing-box 应用..."
+  LangString checkingRunningApplication ${LANG_TRADCHINESE} "正在檢查執行中的 sing-box 應用程式..."
+  LangString checkingRunningApplication ${LANG_FARSI} "در حال بررسی برنامه‌های در حال اجرای sing-box..."
+  LangString checkingRunningApplication ${LANG_RUSSIAN} "Проверка запущенных приложений sing-box..."
+
+  LangString closingApplication ${LANG_ENGLISH} "Closing sing-box..."
+  LangString closingApplication ${LANG_SIMPCHINESE} "正在关闭 sing-box 应用..."
+  LangString closingApplication ${LANG_TRADCHINESE} "正在關閉 sing-box 應用程式..."
+  LangString closingApplication ${LANG_FARSI} "در حال بستن sing-box..."
+  LangString closingApplication ${LANG_RUSSIAN} "Закрытие sing-box..."
+
+  LangString checkingInstallationLocations ${LANG_ENGLISH} "Checking installation locations..."
+  LangString checkingInstallationLocations ${LANG_SIMPCHINESE} "正在检查安装位置..."
+  LangString checkingInstallationLocations ${LANG_TRADCHINESE} "正在檢查安裝位置..."
+  LangString checkingInstallationLocations ${LANG_FARSI} "در حال بررسی محل‌های نصب..."
+  LangString checkingInstallationLocations ${LANG_RUSSIAN} "Проверка расположения установки..."
+
+  LangString preparingApplicationDataDirectory ${LANG_ENGLISH} "Preparing the application data directory..."
+  LangString preparingApplicationDataDirectory ${LANG_SIMPCHINESE} "正在准备应用数据目录..."
+  LangString preparingApplicationDataDirectory ${LANG_TRADCHINESE} "正在準備應用程式資料目錄..."
+  LangString preparingApplicationDataDirectory ${LANG_FARSI} "در حال آماده‌سازی پوشهٔ دادهٔ برنامه..."
+  LangString preparingApplicationDataDirectory ${LANG_RUSSIAN} "Подготовка каталога данных приложения..."
+
+  LangString removingPreviousVersion ${LANG_ENGLISH} "Removing the previous version..."
+  LangString removingPreviousVersion ${LANG_SIMPCHINESE} "正在移除先前版本..."
+  LangString removingPreviousVersion ${LANG_TRADCHINESE} "正在移除先前版本..."
+  LangString removingPreviousVersion ${LANG_FARSI} "در حال حذف نسخهٔ قبلی..."
+  LangString removingPreviousVersion ${LANG_RUSSIAN} "Удаление предыдущей версии..."
+
+  LangString completingDataMigration ${LANG_ENGLISH} "Completing data migration..."
+  LangString completingDataMigration ${LANG_SIMPCHINESE} "正在完成数据迁移..."
+  LangString completingDataMigration ${LANG_TRADCHINESE} "正在完成資料移轉..."
+  LangString completingDataMigration ${LANG_FARSI} "در حال تکمیل انتقال داده‌ها..."
+  LangString completingDataMigration ${LANG_RUSSIAN} "Завершение переноса данных..."
+
   LangString stopServiceFailed ${LANG_ENGLISH} "Failed to stop the sing-box service."
-  LangString stopServiceFailed ${LANG_SIMPCHINESE} "无法停止 sing-box 服务。"
-  LangString stopServiceFailed ${LANG_TRADCHINESE} "無法停止 sing-box 服務。"
+  LangString stopServiceFailed ${LANG_SIMPCHINESE} "无法停止 sing-box 守护进程。"
+  LangString stopServiceFailed ${LANG_TRADCHINESE} "無法停止 sing-box 守護程序。"
   LangString stopServiceFailed ${LANG_FARSI} "توقف سرویس sing-box ناموفق بود."
   LangString stopServiceFailed ${LANG_RUSSIAN} "Не удалось остановить службу sing-box."
 
@@ -112,20 +336,20 @@ FunctionEnd
   LangString unknownNativeArchitecture ${LANG_RUSSIAN} "неизвестна"
 
   LangString registeringService ${LANG_ENGLISH} "Registering the sing-box service..."
-  LangString registeringService ${LANG_SIMPCHINESE} "正在注册 sing-box 服务..."
-  LangString registeringService ${LANG_TRADCHINESE} "正在註冊 sing-box 服務..."
+  LangString registeringService ${LANG_SIMPCHINESE} "正在注册 sing-box 守护进程..."
+  LangString registeringService ${LANG_TRADCHINESE} "正在註冊 sing-box 守護程序..."
   LangString registeringService ${LANG_FARSI} "در حال ثبت سرویس sing-box..."
   LangString registeringService ${LANG_RUSSIAN} "Регистрация службы sing-box..."
 
   LangString registerServiceFailed ${LANG_ENGLISH} "Failed to register the sing-box service (code $1)."
-  LangString registerServiceFailed ${LANG_SIMPCHINESE} "无法注册 sing-box 服务（代码 $1）。"
-  LangString registerServiceFailed ${LANG_TRADCHINESE} "無法註冊 sing-box 服務（代碼 $1）。"
+  LangString registerServiceFailed ${LANG_SIMPCHINESE} "无法注册 sing-box 守护进程（代码 $1）。"
+  LangString registerServiceFailed ${LANG_TRADCHINESE} "無法註冊 sing-box 守護程序（代碼 $1）。"
   LangString registerServiceFailed ${LANG_FARSI} "ثبت سرویس sing-box ناموفق بود (کد $1)."
   LangString registerServiceFailed ${LANG_RUSSIAN} "Не удалось зарегистрировать службу sing-box (код $1)."
 
   LangString serviceCommandNoDetails ${LANG_ENGLISH} "The service command produced no diagnostic output."
-  LangString serviceCommandNoDetails ${LANG_SIMPCHINESE} "服务命令未产生诊断输出。"
-  LangString serviceCommandNoDetails ${LANG_TRADCHINESE} "服務命令未產生診斷輸出。"
+  LangString serviceCommandNoDetails ${LANG_SIMPCHINESE} "守护进程管理命令未产生诊断输出。"
+  LangString serviceCommandNoDetails ${LANG_TRADCHINESE} "守護程序管理命令未產生診斷輸出。"
   LangString serviceCommandNoDetails ${LANG_FARSI} "فرمان سرویس هیچ خروجی عیب‌یابی ایجاد نکرد."
   LangString serviceCommandNoDetails ${LANG_RUSSIAN} "Команда службы не вывела диагностических данных."
 
@@ -136,20 +360,20 @@ FunctionEnd
   LangString copyingApplicationFiles ${LANG_RUSSIAN} "Копирование файлов приложения sing-box..."
 
   LangString rollingBackInstallation ${LANG_ENGLISH} "The service setup failed. Removing the installed application..."
-  LangString rollingBackInstallation ${LANG_SIMPCHINESE} "服务设置失败，正在移除已安装的应用程序..."
-  LangString rollingBackInstallation ${LANG_TRADCHINESE} "服務設定失敗，正在移除已安裝的應用程式..."
+  LangString rollingBackInstallation ${LANG_SIMPCHINESE} "守护进程设置失败，正在移除已安装的应用程序..."
+  LangString rollingBackInstallation ${LANG_TRADCHINESE} "守護程序設定失敗，正在移除已安裝的應用程式..."
   LangString rollingBackInstallation ${LANG_FARSI} "راه‌اندازی سرویس ناموفق بود. برنامهٔ نصب‌شده در حال حذف است..."
   LangString rollingBackInstallation ${LANG_RUSSIAN} "Не удалось настроить службу. Удаление установленного приложения..."
 
   LangString registerServiceFailedRolledBack ${LANG_ENGLISH} "Failed to register the sing-box service (code $1). The installed application was removed.$\r$\n$\r$\n$3"
-  LangString registerServiceFailedRolledBack ${LANG_SIMPCHINESE} "无法注册 sing-box 服务（代码 $1）。已移除安装的应用程序。$\r$\n$\r$\n$3"
-  LangString registerServiceFailedRolledBack ${LANG_TRADCHINESE} "無法註冊 sing-box 服務（代碼 $1）。已移除安裝的應用程式。$\r$\n$\r$\n$3"
+  LangString registerServiceFailedRolledBack ${LANG_SIMPCHINESE} "无法注册 sing-box 守护进程（代码 $1）。已移除安装的应用程序。$\r$\n$\r$\n$3"
+  LangString registerServiceFailedRolledBack ${LANG_TRADCHINESE} "無法註冊 sing-box 守護程序（代碼 $1）。已移除安裝的應用程式。$\r$\n$\r$\n$3"
   LangString registerServiceFailedRolledBack ${LANG_FARSI} "ثبت سرویس sing-box ناموفق بود (کد $1). برنامهٔ نصب‌شده حذف شد.$\r$\n$\r$\n$3"
   LangString registerServiceFailedRolledBack ${LANG_RUSSIAN} "Не удалось зарегистрировать службу sing-box (код $1). Установленное приложение удалено.$\r$\n$\r$\n$3"
 
   LangString registerServiceFailedRollbackFailed ${LANG_ENGLISH} "Failed to register the sing-box service (code $1), and automatic removal failed (code $2).$\r$\n$\r$\n$3"
-  LangString registerServiceFailedRollbackFailed ${LANG_SIMPCHINESE} "无法注册 sing-box 服务（代码 $1），且自动移除失败（代码 $2）。$\r$\n$\r$\n$3"
-  LangString registerServiceFailedRollbackFailed ${LANG_TRADCHINESE} "無法註冊 sing-box 服務（代碼 $1），且自動移除失敗（代碼 $2）。$\r$\n$\r$\n$3"
+  LangString registerServiceFailedRollbackFailed ${LANG_SIMPCHINESE} "无法注册 sing-box 守护进程（代码 $1），且自动移除失败（代码 $2）。$\r$\n$\r$\n$3"
+  LangString registerServiceFailedRollbackFailed ${LANG_TRADCHINESE} "無法註冊 sing-box 守護程序（代碼 $1），且自動移除失敗（代碼 $2）。$\r$\n$\r$\n$3"
   LangString registerServiceFailedRollbackFailed ${LANG_FARSI} "ثبت سرویس sing-box ناموفق بود (کد $1) و حذف خودکار نیز ناموفق بود (کد $2).$\r$\n$\r$\n$3"
   LangString registerServiceFailedRollbackFailed ${LANG_RUSSIAN} "Не удалось зарегистрировать службу sing-box (код $1), а автоматическое удаление завершилось ошибкой (код $2).$\r$\n$\r$\n$3"
 
@@ -189,6 +413,12 @@ FunctionEnd
   LangString repairInstallationPermissionsButton ${LANG_FARSI} "&اصلاح مجوزها"
   LangString repairInstallationPermissionsButton ${LANG_RUSSIAN} "&Исправить разрешения"
 
+  LangString repairingInstallationPermissions ${LANG_ENGLISH} "Repairing installation permissions..."
+  LangString repairingInstallationPermissions ${LANG_SIMPCHINESE} "正在修复安装权限..."
+  LangString repairingInstallationPermissions ${LANG_TRADCHINESE} "正在修復安裝權限..."
+  LangString repairingInstallationPermissions ${LANG_FARSI} "در حال اصلاح مجوزهای نصب..."
+  LangString repairingInstallationPermissions ${LANG_RUSSIAN} "Исправление разрешений установки..."
+
   LangString unsafeInstallationButton ${LANG_ENGLISH} "&Unsafe installation"
   LangString unsafeInstallationButton ${LANG_SIMPCHINESE} "不安全安装(&U)"
   LangString unsafeInstallationButton ${LANG_TRADCHINESE} "不安全安裝(&U)"
@@ -208,8 +438,8 @@ FunctionEnd
   LangString unsafeInstallationConfirmationSubtitle ${LANG_RUSSIAN} "Чтобы продолжить, установите флажок подтверждения ниже."
 
   LangString unsafeInstallationConfirmationWarning ${LANG_ENGLISH} "The installer and service will skip installation path security checks and permission hardening. This can allow another program to replace sing-box and elevate privileges to SYSTEM."
-  LangString unsafeInstallationConfirmationWarning ${LANG_SIMPCHINESE} "安装程序和服务将跳过安装路径安全检查与权限加固。这可能允许其他程序替换 sing-box 并提权到 SYSTEM。"
-  LangString unsafeInstallationConfirmationWarning ${LANG_TRADCHINESE} "安裝程式和服務將略過安裝路徑安全檢查與權限強化。這可能允許其他程式取代 sing-box 並將權限提升至 SYSTEM。"
+  LangString unsafeInstallationConfirmationWarning ${LANG_SIMPCHINESE} "安装程序和守护进程将跳过安装路径安全检查与权限加固。这可能允许其他程序替换 sing-box 并提权到 SYSTEM。"
+  LangString unsafeInstallationConfirmationWarning ${LANG_TRADCHINESE} "安裝程式和守護程序將略過安裝路徑安全檢查與權限強化。這可能允許其他程式取代 sing-box 並將權限提升至 SYSTEM。"
   LangString unsafeInstallationConfirmationWarning ${LANG_FARSI} "نصب‌کننده و سرویس، بررسی امنیت مسیر نصب و ایمن‌سازی مجوزها را نادیده می‌گیرند. این کار ممکن است به برنامه‌ای دیگر اجازه دهد sing-box را جایگزین کند و سطح دسترسی را به SYSTEM برساند."
   LangString unsafeInstallationConfirmationWarning ${LANG_RUSSIAN} "Установщик и служба пропустят проверку безопасности пути и усиление разрешений. Другая программа сможет подменить sing-box и повысить привилегии до SYSTEM."
 
@@ -275,20 +505,20 @@ FunctionEnd
 
   !ifndef BUILD_UNINSTALLER
   LangString resetWorkingDirectoryPrompt ${LANG_ENGLISH} "The sing-box service data directory is invalid:$\r$\n$workingDirectory$\r$\nContinuing will delete this directory so the service can recreate it securely. Continue?"
-  LangString resetWorkingDirectoryPrompt ${LANG_SIMPCHINESE} "sing-box 服务数据目录无效：$\r$\n$workingDirectory$\r$\n继续安装将删除此目录，以便服务用安全权限重新创建。是否继续？"
-  LangString resetWorkingDirectoryPrompt ${LANG_TRADCHINESE} "sing-box 服務資料目錄無效：$\r$\n$workingDirectory$\r$\n繼續安裝將刪除此目錄，以便服務用安全權限重新建立。是否繼續？"
+  LangString resetWorkingDirectoryPrompt ${LANG_SIMPCHINESE} "sing-box 守护进程数据目录无效：$\r$\n$workingDirectory$\r$\n继续安装将删除此目录，以便守护进程用安全权限重新创建。是否继续？"
+  LangString resetWorkingDirectoryPrompt ${LANG_TRADCHINESE} "sing-box 守護程序資料目錄無效：$\r$\n$workingDirectory$\r$\n繼續安裝將刪除此目錄，以便守護程序用安全權限重新建立。是否繼續？"
   LangString resetWorkingDirectoryPrompt ${LANG_FARSI} "پوشهٔ دادهٔ سرویس sing-box نامعتبر است:$\r$\n$workingDirectory$\r$\nبا ادامه، این پوشه حذف می‌شود تا سرویس آن را با مجوزهای امن دوباره ایجاد کند. ادامه می‌دهید؟"
   LangString resetWorkingDirectoryPrompt ${LANG_RUSSIAN} "Каталог данных службы sing-box недействителен:$\r$\n$workingDirectory$\r$\nПри продолжении каталог будет удалён, чтобы служба могла безопасно создать его заново. Продолжить?"
 
   LangString resettingWorkingDirectory ${LANG_ENGLISH} "Resetting the sing-box service data directory..."
-  LangString resettingWorkingDirectory ${LANG_SIMPCHINESE} "正在重置 sing-box 服务数据目录..."
-  LangString resettingWorkingDirectory ${LANG_TRADCHINESE} "正在重設 sing-box 服務資料目錄..."
+  LangString resettingWorkingDirectory ${LANG_SIMPCHINESE} "正在重置 sing-box 守护进程数据目录..."
+  LangString resettingWorkingDirectory ${LANG_TRADCHINESE} "正在重設 sing-box 守護程序資料目錄..."
   LangString resettingWorkingDirectory ${LANG_FARSI} "در حال بازنشانی پوشهٔ دادهٔ سرویس sing-box..."
   LangString resettingWorkingDirectory ${LANG_RUSSIAN} "Сброс каталога данных службы sing-box..."
 
   LangString resetWorkingDirectoryFailed ${LANG_ENGLISH} "Could not reset the sing-box service data directory (code $1). No application files were installed."
-  LangString resetWorkingDirectoryFailed ${LANG_SIMPCHINESE} "无法重置 sing-box 服务数据目录（代码 $1）。尚未安装任何应用程序文件。"
-  LangString resetWorkingDirectoryFailed ${LANG_TRADCHINESE} "無法重設 sing-box 服務資料目錄（代碼 $1）。尚未安裝任何應用程式檔案。"
+  LangString resetWorkingDirectoryFailed ${LANG_SIMPCHINESE} "无法重置 sing-box 守护进程数据目录（代码 $1）。尚未安装任何应用程序文件。"
+  LangString resetWorkingDirectoryFailed ${LANG_TRADCHINESE} "無法重設 sing-box 守護程序資料目錄（代碼 $1）。尚未安裝任何應用程式檔案。"
   LangString resetWorkingDirectoryFailed ${LANG_FARSI} "بازنشانی پوشهٔ دادهٔ سرویس sing-box ممکن نشد (کد $1). هیچ فایل برنامه‌ای نصب نشد."
   LangString resetWorkingDirectoryFailed ${LANG_RUSSIAN} "Не удалось сбросить каталог данных службы sing-box (код $1). Файлы приложения ещё не устанавливались."
   !endif
@@ -300,14 +530,14 @@ FunctionEnd
   LangString preflightFailed ${LANG_RUSSIAN} "Не удалось проверить каталоги установки (код $1)."
 
   LangString removingService ${LANG_ENGLISH} "Removing the sing-box service..."
-  LangString removingService ${LANG_SIMPCHINESE} "正在移除 sing-box 服务..."
-  LangString removingService ${LANG_TRADCHINESE} "正在移除 sing-box 服務..."
+  LangString removingService ${LANG_SIMPCHINESE} "正在移除 sing-box 守护进程..."
+  LangString removingService ${LANG_TRADCHINESE} "正在移除 sing-box 守護程序..."
   LangString removingService ${LANG_FARSI} "در حال حذف سرویس sing-box..."
   LangString removingService ${LANG_RUSSIAN} "Удаление службы sing-box..."
 
   LangString removeServiceFailed ${LANG_ENGLISH} "Failed to remove the sing-box service (code $1).$\r$\n$\r$\n$3"
-  LangString removeServiceFailed ${LANG_SIMPCHINESE} "无法移除 sing-box 服务（代码 $1）。$\r$\n$\r$\n$3"
-  LangString removeServiceFailed ${LANG_TRADCHINESE} "無法移除 sing-box 服務（代碼 $1）。$\r$\n$\r$\n$3"
+  LangString removeServiceFailed ${LANG_SIMPCHINESE} "无法移除 sing-box 守护进程（代码 $1）。$\r$\n$\r$\n$3"
+  LangString removeServiceFailed ${LANG_TRADCHINESE} "無法移除 sing-box 守護程序（代碼 $1）。$\r$\n$\r$\n$3"
   LangString removeServiceFailed ${LANG_FARSI} "حذف سرویس sing-box ناموفق بود (کد $1).$\r$\n$\r$\n$3"
   LangString removeServiceFailed ${LANG_RUSSIAN} "Не удалось удалить службу sing-box (код $1).$\r$\n$\r$\n$3"
 
@@ -316,6 +546,36 @@ FunctionEnd
   LangString removingData ${LANG_TRADCHINESE} "正在移除 sing-box 資料..."
   LangString removingData ${LANG_FARSI} "در حال حذف داده‌های sing-box..."
   LangString removingData ${LANG_RUSSIAN} "Удаление данных sing-box..."
+!macroend
+
+!macro setInstallationLayoutRegistryView
+  ${if} ${RunningX64}
+  ${orif} ${IsNativeARM64}
+    SetRegView 64
+  ${else}
+    SetRegView 32
+  ${endif}
+!macroend
+
+!macro restoreInstallerRegistryView
+  !ifdef APP_ARM64
+    ${if} ${RunningX64}
+    ${orif} ${IsNativeARM64}
+      SetRegView 64
+    ${else}
+      SetRegView 32
+    ${endif}
+  !else
+    !ifdef APP_64
+      ${if} ${RunningX64}
+        SetRegView 64
+      ${else}
+        SetRegView 32
+      ${endif}
+    !else
+      SetRegView 32
+    !endif
+  !endif
 !macroend
 
 !macro daemonExecutable OUT
@@ -327,7 +587,7 @@ FunctionEnd
   StrCpy ${RESULT} -1
   StrCpy ${DETAILS} ""
   ClearErrors
-  nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-service.ps1" -ExecutablePath "$0" -ServiceAction ${ACTION} -OutputPath "$PLUGINSDIR\service-command.log" ${OPTIONS}'
+  nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-service.ps1" -ExecutablePath "$0" -ServiceAction ${ACTION} -OutputPath "$PLUGINSDIR\service-command.log" -DaemonDataDirectory "$daemonDataDirectory" ${OPTIONS}'
   Pop ${RESULT}
   ${if} ${RESULT} == "error"
     StrCpy ${RESULT} -1
@@ -376,6 +636,7 @@ FunctionEnd
 
 !macro customInit
   !insertmacro confirmNativeArchitecture
+  !insertmacro setInstallationLayoutRegistryView
   StrCpy $allowUnsafeInstallation 0
   StrCpy $installationValidationAllowsUnsafe 0
   StrCpy $installationValidationMessage ""
@@ -383,22 +644,276 @@ FunctionEnd
   StrCpy $unsafeInstallationConfirmationRequested 0
   StrCpy $unsafeInstallationAncestor ""
   StrCpy $resetWorkingDirectory 0
+  StrCpy $reinstallExistingInstallation 0
+  StrCpy $migrateExistingData ${BST_CHECKED}
+  StrCpy $applicationDataDirectory ""
+  StrCpy $previousApplicationDataDirectory ""
+  StrCpy $hasExistingInstallation 0
+  StrCpy $hasInstallationLayout 0
+  StrCpy $installationID ""
+  StrCpy $previousInstallationID ""
+  StrCpy $installationFailureButtonText ""
+  StrCpy $dataMigrationPrepared 0
   SetShellVarContext all
-  StrCpy $workingDirectory "$APPDATA\sing-box-daemon"
+  StrCpy $daemonDataDirectory "$APPDATA\sing-box-daemon"
+  StrCpy $0 0
+  ReadRegDWORD $0 HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "LayoutVersion"
+  ${if} $0 == 2
+    ReadRegStr $applicationDataDirectory HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "ApplicationDataDirectory"
+    ReadRegStr $daemonDataDirectory HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "DaemonDataDirectory"
+    ReadRegStr $installationID HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "InstallationID"
+    StrCpy $hasInstallationLayout 1
+  ${endif}
+  !insertmacro restoreInstallerRegistryView
+  ReadRegStr $0 HKLM "${INSTALL_REGISTRY_KEY}" "InstallLocation"
+  ${if} $0 != ""
+    StrCpy $hasExistingInstallation 1
+  ${endif}
+  ${if} $installationID == ""
+    System::Call 'ole32::CoCreateGuid(g .s)'
+    Pop $installationID
+  ${endif}
+  ${if} $daemonDataDirectory == ""
+    StrCpy $daemonDataDirectory "$APPDATA\sing-box-daemon"
+  ${endif}
+  StrCpy $previousApplicationDataDirectory $applicationDataDirectory
+  StrCpy $previousDaemonDataDirectory $daemonDataDirectory
+  StrCpy $previousInstallationID $installationID
+  ${if} $hasExistingInstallation == 0
+    ${if} $applicationDataDirectory == ""
+      StrCpy $applicationDataDirectory "$APPDATA\sing-box"
+    ${endif}
+    ${GetParameters} $R0
+    ClearErrors
+    ${GetOptions} $R0 "/APPLICATIONDATADIRECTORY=" $R1
+    ${ifNot} ${Errors}
+      StrCpy $applicationDataDirectory $R1
+    ${else}
+      ClearErrors
+      ${GetOptions} $R0 "/APPLICATIONDATAROOT=" $R1
+      ${ifNot} ${Errors}
+        StrCpy $applicationDataDirectory $R1
+      ${endif}
+    ${endif}
+    ClearErrors
+    ${GetOptions} $R0 "/DAEMONDATADIRECTORY=" $R1
+    ${ifNot} ${Errors}
+      StrCpy $daemonDataDirectory $R1
+    ${endif}
+  ${endif}
+  StrCpy $workingDirectory $daemonDataDirectory
+  StrCpy $dataTransitionStatePath "$APPDATA\sing-box-installer\data-transition.json"
   InitPluginsDir
   File /oname=$PLUGINSDIR\installer-preflight.ps1 "${BUILD_RESOURCES_DIR}\installer-preflight.ps1"
   File /oname=$PLUGINSDIR\installer-service.ps1 "${BUILD_RESOURCES_DIR}\installer-service.ps1"
+  File /oname=$PLUGINSDIR\installer-data.ps1 "${BUILD_RESOURCES_DIR}\installer-data.ps1"
+  ${if} ${FileExists} "$dataTransitionStatePath"
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-data.ps1" -Operation Recover -StatePath "$dataTransitionStatePath"'
+    Pop $0
+    ${if} $0 != 0
+      StrCpy $1 $0
+      Abort "$(dataMigrationCleanupFailed)"
+    ${endif}
+  ${endif}
+!macroend
+
+!macro customWelcomePage
+  Page custom showExistingInstallationActionPage leaveExistingInstallationActionPage
+
+  Function showExistingInstallationActionPage
+    ${if} $hasExistingInstallation == 0
+      Abort
+    ${endif}
+    !insertmacro MUI_HEADER_TEXT "$(existingInstallationPageTitle)" "$(existingInstallationPageSubtitle)"
+    nsDialogs::Create 1018
+    Pop $existingInstallationActionDialog
+    ${if} $existingInstallationActionDialog == error
+      Abort
+    ${endif}
+
+    ${NSD_CreateRadioButton} 0u 0u 100% 14u "$(updateExistingInstallation)"
+    Pop $updateExistingInstallationRadio
+
+    ${NSD_CreateRadioButton} 0u 14u 100% 14u "$(reinstallExistingInstallation)"
+    Pop $reinstallExistingInstallationRadio
+
+    ${if} $reinstallExistingInstallation == 1
+      ${NSD_SetState} $reinstallExistingInstallationRadio ${BST_CHECKED}
+    ${else}
+      ${NSD_SetState} $updateExistingInstallationRadio ${BST_CHECKED}
+    ${endif}
+    nsDialogs::Show
+  FunctionEnd
+
+  Function leaveExistingInstallationActionPage
+    ${NSD_GetState} $reinstallExistingInstallationRadio $0
+    ${if} $0 == ${BST_CHECKED}
+      StrCpy $reinstallExistingInstallation 1
+    ${else}
+      StrCpy $reinstallExistingInstallation 0
+      StrCpy $applicationDataDirectory $previousApplicationDataDirectory
+      StrCpy $daemonDataDirectory $previousDaemonDataDirectory
+    ${endif}
+  FunctionEnd
+
+  Function showLicensePage
+    GetDlgItem $0 $HWNDPARENT 3
+    ShowWindow $0 ${SW_HIDE}
+  FunctionEnd
+
+  Function leaveLicensePage
+    GetDlgItem $0 $HWNDPARENT 3
+    ShowWindow $0 ${SW_SHOW}
+  FunctionEnd
+
+  Function skipAcceptedLicensePage
+    ${if} ${isUpdated}
+    ${orif} $hasExistingInstallation == 1
+      Abort
+    ${endif}
+  FunctionEnd
+
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW showLicensePage
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE leaveLicensePage
 !macroend
 
 !macro executeInstallationPreflight OPTIONS
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" ${OPTIONS}'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" ${OPTIONS}'
+  Pop $1
+  Pop $0
+!macroend
+
+!macro executeInstallationPreflightAsync OPTIONS
+  ClearErrors
+  ExecShell "open" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" -ResultOutputPath "$installationValidationOutputPath" -ResultCodePath "$installationValidationResultPath" -ProcessIDPath "$installationValidationProcessIDPath" ${OPTIONS}' SW_HIDE
+  ${if} ${Errors}
+    StrCpy $0 "error"
+  ${else}
+    StrCpy $0 "ok"
+  ${endif}
+!macroend
+
+!macro executeDataTransition OPERATION
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-data.ps1" -Operation ${OPERATION} -StatePath "$dataTransitionStatePath" -PreviousApplicationDataDirectory "$previousApplicationDataDirectory" -ApplicationDataDirectory "$applicationDataDirectory" -PreviousDaemonDataDirectory "$previousDaemonDataDirectory" -DaemonDataDirectory "$daemonDataDirectory" -PreviousInstallationID "$previousInstallationID" -InstallationID "$installationID"'
   Pop $1
   Pop $0
 !macroend
 
 !macro customPageAfterChangeDir
+  Page custom showDataDirectoriesPage leaveDataDirectoriesPage
   Page custom showInstallationDirectoryValidationPage
   Page custom showUnsafeInstallationConfirmationPage
+
+  Function showDataDirectoriesPage
+    ${if} $hasExistingInstallation == 1
+    ${andif} $reinstallExistingInstallation == 0
+      Abort
+    ${endif}
+    !insertmacro MUI_HEADER_TEXT "$(dataDirectoriesPageTitle)" "$(dataDirectoriesPageSubtitle)"
+    nsDialogs::Create 1018
+    Pop $dataDirectoriesDialog
+    ${if} $dataDirectoriesDialog == error
+      Abort
+    ${endif}
+
+    ${if} $applicationDataDirectory == ""
+      StrCpy $applicationDataDirectory "$APPDATA\sing-box"
+    ${endif}
+
+    ${NSD_CreateLabel} 0u 0u 100% 12u "$(installationDirectoryLabel)"
+    Pop $1
+    ${NSD_CreateDirRequest} 0u 16u 76% 13u "$INSTDIR"
+    Pop $installationDirectoryInput
+    ${NSD_CreateBrowseButton} 78% 15u 22% 15u "$(browseDirectoryButton)"
+    Pop $installationDirectoryBrowseButton
+    ${NSD_OnClick} $installationDirectoryBrowseButton browseInstallationDirectory
+
+    StrCpy $0 38
+    ${NSD_CreateLabel} 0u $0u 100% 12u "$(applicationDataDirectoryLabel)"
+    Pop $1
+    IntOp $0 $0 + 16
+    ${NSD_CreateDirRequest} 0u $0u 76% 13u "$applicationDataDirectory"
+    Pop $applicationDataDirectoryInput
+    IntOp $0 $0 - 1
+    ${NSD_CreateBrowseButton} 78% $0u 22% 15u "$(browseDirectoryButton)"
+    Pop $applicationDataDirectoryBrowseButton
+    ${NSD_OnClick} $applicationDataDirectoryBrowseButton browseApplicationDataDirectory
+
+    IntOp $0 $0 + 27
+    ${NSD_CreateLabel} 0u $0u 100% 12u "$(daemonDataDirectoryLabel)"
+    Pop $1
+    IntOp $0 $0 + 16
+    ${NSD_CreateDirRequest} 0u $0u 76% 13u "$daemonDataDirectory"
+    Pop $daemonDataDirectoryInput
+    IntOp $0 $0 - 1
+    ${NSD_CreateBrowseButton} 78% $0u 22% 15u "$(browseDirectoryButton)"
+    Pop $daemonDataDirectoryBrowseButton
+    ${NSD_OnClick} $daemonDataDirectoryBrowseButton browseDaemonDataDirectory
+
+    ${if} $hasInstallationLayout == 1
+    ${orif} $hasExistingInstallation == 1
+      IntOp $0 $0 + 23
+      ${NSD_CreateCheckBox} 0u $0u 100% 12u "$(migrateExistingData)"
+      Pop $migrateExistingDataCheckbox
+      ${NSD_SetState} $migrateExistingDataCheckbox $migrateExistingData
+    ${endif}
+
+    nsDialogs::Show
+  FunctionEnd
+
+  Function leaveDataDirectoriesPage
+    ${NSD_GetText} $installationDirectoryInput $INSTDIR
+    ${if} $INSTDIR == ""
+      Abort
+    ${endif}
+    ${NSD_GetText} $applicationDataDirectoryInput $applicationDataDirectory
+    ${if} $applicationDataDirectory == ""
+      StrCpy $0 ""
+      MessageBox MB_OK|MB_ICONSTOP "$(invalidApplicationDataDirectory)"
+      Abort
+    ${endif}
+    ${NSD_GetText} $daemonDataDirectoryInput $daemonDataDirectory
+    ${if} $daemonDataDirectory == ""
+      StrCpy $0 ""
+      MessageBox MB_OK|MB_ICONSTOP "$(invalidDaemonDataDirectory)"
+      Abort
+    ${endif}
+    ${if} $hasInstallationLayout == 1
+    ${orif} $hasExistingInstallation == 1
+      ${NSD_GetState} $migrateExistingDataCheckbox $migrateExistingData
+    ${endif}
+    StrCpy $workingDirectory $daemonDataDirectory
+  FunctionEnd
+
+  Function browseApplicationDataDirectory
+    Pop $0
+    ${NSD_GetText} $applicationDataDirectoryInput $0
+    nsDialogs::SelectFolderDialog "$(applicationDataDirectoryLabel)" "$0"
+    Pop $0
+    ${if} $0 != error
+      ${NSD_SetText} $applicationDataDirectoryInput $0
+    ${endif}
+  FunctionEnd
+
+  Function browseInstallationDirectory
+    Pop $0
+    ${NSD_GetText} $installationDirectoryInput $0
+    nsDialogs::SelectFolderDialog "$(installationDirectoryLabel)" "$0"
+    Pop $0
+    ${if} $0 != error
+      ${NSD_SetText} $installationDirectoryInput $0
+    ${endif}
+  FunctionEnd
+
+  Function browseDaemonDataDirectory
+    Pop $0
+    ${NSD_GetText} $daemonDataDirectoryInput $0
+    nsDialogs::SelectFolderDialog "$(daemonDataDirectoryLabel)" "$0"
+    Pop $0
+    ${if} $0 != error
+      ${NSD_SetText} $daemonDataDirectoryInput $0
+    ${endif}
+  FunctionEnd
 
   Function showInstallationDirectoryValidationPage
     ${StrContains} $0 "${APP_FILENAME}" $INSTDIR
@@ -411,29 +926,124 @@ FunctionEnd
     StrCpy $installationValidationRepairable 0
     StrCpy $unsafeInstallationConfirmationRequested 0
     StrCpy $unsafeInstallationAncestor ""
-    !insertmacro executeInstallationPreflight ""
-    ${if} $1 == 0
+    StrCpy $installationValidationProcessHandle ""
+    StrCpy $installationValidationProcessIDPath "$PLUGINSDIR\installation-validation-process-id.txt"
+    StrCpy $installationValidationOutputPath "$PLUGINSDIR\installation-validation-output.txt"
+    StrCpy $installationValidationResultPath "$PLUGINSDIR\installation-validation-result.txt"
+    StrCpy $installationValidationOutput ""
+    Delete "$installationValidationProcessIDPath"
+    Delete "$installationValidationOutputPath"
+    Delete "$installationValidationResultPath"
+    !insertmacro MUI_HEADER_TEXT "$(checkingInstallationLocations)" ""
+    nsDialogs::Create 1018
+    Pop $installationValidationDialog
+    ${if} $installationValidationDialog == error
       Abort
-    ${elseif} $1 == 20
-    ${orif} $1 == 21
-    ${orif} $1 == 22
+    ${endif}
+
+    ${NSD_CreateLabel} 0u 20u 100% 16u "$(checkingInstallationLocations)"
+    Pop $installationValidationStatusLabel
+    ${NSD_CreateProgressBar} 0u 46u 100% 12u ""
+    Pop $installationValidationProgressBar
+    ${NSD_AddStyle} $installationValidationProgressBar 0x8
+    SendMessage $installationValidationProgressBar ${PBM_SETMARQUEE} 1 30
+
+    GetDlgItem $0 $HWNDPARENT 1
+    ShowWindow $0 ${SW_HIDE}
+    GetDlgItem $0 $HWNDPARENT 2
+    ShowWindow $0 ${SW_SHOW}
+    GetDlgItem $0 $HWNDPARENT 3
+    ShowWindow $0 ${SW_HIDE}
+
+    !insertmacro executeInstallationPreflightAsync ""
+    ${if} $0 == "ok"
+      ${NSD_CreateTimer} pollInstallationDirectoryValidation 100
+    ${else}
+      StrCpy $installationValidationResult 30
+      Call showInstallationDirectoryValidationResult
+    ${endif}
+    nsDialogs::Show
+  FunctionEnd
+
+  Function pollInstallationDirectoryValidation
+    ${if} $installationValidationProcessHandle == ""
+    ${andif} ${FileExists} "$installationValidationProcessIDPath"
+      ClearErrors
+      FileOpen $0 "$installationValidationProcessIDPath" r
+      ${ifNot} ${Errors}
+        FileRead $0 $1
+        FileClose $0
+        System::Call 'kernel32::OpenProcess(i 0x00100001, i 0, i r1) p.r0'
+        ${if} $0 != 0
+          StrCpy $installationValidationProcessHandle $0
+        ${endif}
+      ${endif}
+    ${endif}
+    ${if} ${FileExists} "$installationValidationResultPath"
+      ${NSD_KillTimer} pollInstallationDirectoryValidation
+      ClearErrors
+      FileOpen $0 "$installationValidationResultPath" r
+      ${ifNot} ${Errors}
+        FileRead $0 $installationValidationResult
+        FileClose $0
+      ${else}
+        StrCpy $installationValidationResult 30
+      ${endif}
+      Goto installationDirectoryValidationFinished
+    ${endif}
+    ${if} $installationValidationProcessHandle == ""
+      Return
+    ${endif}
+    StrCpy $0 $installationValidationProcessHandle
+    System::Call 'kernel32::WaitForSingleObject(p r0, i 0) i.r1'
+    ${if} $1 == 258
+      Return
+    ${endif}
+    ${NSD_KillTimer} pollInstallationDirectoryValidation
+    StrCpy $installationValidationResult 30
+
+    installationDirectoryValidationFinished:
+    ${if} $installationValidationProcessHandle != ""
+      StrCpy $0 $installationValidationProcessHandle
+      System::Call 'kernel32::CloseHandle(p r0)'
+    ${endif}
+    StrCpy $installationValidationProcessHandle ""
+    ClearErrors
+    FileOpen $0 "$installationValidationOutputPath" r
+    ${ifNot} ${Errors}
+      FileRead $0 $installationValidationOutput
+      FileClose $0
+    ${endif}
+    Delete "$installationValidationProcessIDPath"
+    Delete "$installationValidationOutputPath"
+    Delete "$installationValidationResultPath"
+    Call showInstallationDirectoryValidationResult
+  FunctionEnd
+
+  Function showInstallationDirectoryValidationResult
+    ShowWindow $installationValidationStatusLabel ${SW_HIDE}
+    ShowWindow $installationValidationProgressBar ${SW_HIDE}
+    ${if} $installationValidationResult == 0
+      Call advanceInstallationDirectoryValidationPage
+      Return
+    ${elseif} $installationValidationResult == 20
+    ${orif} $installationValidationResult == 21
+    ${orif} $installationValidationResult == 22
       MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON1 "$(resetWorkingDirectoryPrompt)" /SD IDYES IDYES acceptWorkingDirectoryReset IDNO declineWorkingDirectoryReset
       acceptWorkingDirectoryReset:
         StrCpy $resetWorkingDirectory 1
-        Abort
+        Call advanceInstallationDirectoryValidationPage
+        Return
       declineWorkingDirectoryReset:
         Quit
     ${endif}
+    StrCpy $0 $installationValidationOutput
+    StrCpy $1 $installationValidationResult
     Call setInstallationValidationMessage
     ${if} $installationValidationAllowsUnsafe != 1
       !insertmacro MUI_HEADER_TEXT "$(invalidInstallationPageTitle)" "$(invalidInstallationPageSubtitle)"
     ${else}
       !insertmacro MUI_HEADER_TEXT "$(unsafeInstallationPageTitle)" "$(unsafeInstallationPageSubtitle)"
-    ${endif}
-    nsDialogs::Create 1018
-    Pop $installationValidationDialog
-    ${if} $installationValidationDialog == error
-      Abort
     ${endif}
 
     ${NSD_CreateLabel} 0u 0u 100% 84u "$installationValidationMessage"
@@ -455,8 +1065,6 @@ FunctionEnd
       ${endif}
     ${endif}
 
-    GetDlgItem $0 $HWNDPARENT 1
-    ShowWindow $0 ${SW_HIDE}
     GetDlgItem $0 $HWNDPARENT 2
     ShowWindow $0 ${SW_SHOW}
     ${if} $installationValidationRepairable == 1
@@ -466,7 +1074,6 @@ FunctionEnd
     ${endif}
     GetDlgItem $0 $HWNDPARENT 3
     ShowWindow $0 ${SW_SHOW}
-    nsDialogs::Show
   FunctionEnd
 
   Function showUnsafeInstallationConfirmationPage
@@ -536,6 +1143,12 @@ FunctionEnd
     ${elseif} $1 == 16
       StrCpy $installationValidationAllowsUnsafe 1
       StrCpy $installationValidationMessage "$(installationVolumeNotVerified)"
+    ${elseif} $1 == 23
+      StrCpy $installationValidationMessage "$(invalidDaemonDataDirectory)"
+    ${elseif} $1 == 24
+    ${orif} $1 == 25
+    ${orif} $1 == 26
+      StrCpy $installationValidationMessage "$(invalidApplicationDataDirectory)"
     ${else}
       StrCpy $installationValidationMessage "$(preflightFailed)"
     ${endif}
@@ -562,6 +1175,7 @@ FunctionEnd
       Return
     ${endif}
     StrCpy $allowUnsafeInstallation 1
+    !insertmacro showPendingInstallerOperation "$(checkingInstallationLocations)"
     !insertmacro executeInstallationPreflight "-AllowUnsafeInstallationDirectory"
     ${if} $1 == 0
       Call advanceInstallationDirectoryValidationPage
@@ -594,6 +1208,7 @@ FunctionEnd
 
   Function repairInstallationPermissions
     Pop $0
+    !insertmacro showPendingInstallerOperation "$(repairingInstallationPermissions)"
     !insertmacro executeInstallationPreflight "-RepairInstallationAncestors"
     ${if} $1 == 0
       StrCpy $allowUnsafeInstallation 0
@@ -631,16 +1246,42 @@ FunctionEnd
     Call restoreInstallerNavigation
     SendMessage $HWNDPARENT ${WM_COMMAND} 1 0
   FunctionEnd
+
+  Function showInstallationFailureFinishButton
+    ${if} ${Abort}
+      GetDlgItem $0 $HWNDPARENT 2
+      System::Call '*(&t64 "$(MUI_BUTTONTEXT_FINISH)") p.r1'
+      ${if} $1 != 0
+        System::Call 'user32::PostMessage(p r0, i ${WM_SETTEXT}, p 0, p r1) i.r2'
+        ${if} $2 != 0
+          StrCpy $installationFailureButtonText $1
+        ${else}
+          System::Free $1
+        ${endif}
+      ${endif}
+    ${endif}
+  FunctionEnd
+
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE showInstallationFailureFinishButton
 !macroend
 
-!macro customInstallBeforeApplicationFiles
+!macro customInstallBeforeCheckAppRunning
   SetDetailsPrint both
+  DetailPrint "$(checkingRunningApplication)"
+!macroend
+
+!macro customInstallBeforeInstallationChanges
+  SetDetailsPrint both
+  ${StrContains} $0 "${APP_FILENAME}" $INSTDIR
+  ${if} $0 == ""
+    StrCpy $INSTDIR "$INSTDIR\${APP_FILENAME}"
+  ${endif}
   ${if} $resetWorkingDirectory == 1
     DetailPrint "$(resettingWorkingDirectory)"
     ${if} $allowUnsafeInstallation == 1
-      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -AllowUnsafeInstallationDirectory -ResetWorkingDirectory'
+      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" -AllowUnsafeInstallationDirectory -ResetWorkingDirectory'
     ${else}
-      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ResetWorkingDirectory'
+      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" -ResetWorkingDirectory'
     ${endif}
     Pop $1
     ${if} $1 != 0
@@ -648,6 +1289,7 @@ FunctionEnd
     ${endif}
   ${endif}
   validateInstallationDirectory:
+  DetailPrint "$(checkingInstallationLocations)"
   ${if} $allowUnsafeInstallation == 1
     !insertmacro executeInstallationPreflight "-AllowUnsafeInstallationDirectory"
   ${else}
@@ -670,7 +1312,7 @@ FunctionEnd
   ${orif} $1 == 22
     ${if} ${Silent}
       DetailPrint "$(resettingWorkingDirectory)"
-      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ResetWorkingDirectory'
+      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" -ResetWorkingDirectory'
       Pop $1
       ${if} $1 != 0
         Abort "$(resetWorkingDirectoryFailed)"
@@ -682,12 +1324,48 @@ FunctionEnd
     Call setInstallationValidationMessage
     Abort "$installationValidationMessage"
   ${endif}
+  ${if} $applicationDataDirectory != ""
+    DetailPrint "$(preparingApplicationDataDirectory)"
+    !insertmacro executeInstallationPreflight "-PrepareApplicationDataDirectory"
+    ${if} $1 != 0
+      Call setInstallationValidationMessage
+      Abort "$installationValidationMessage"
+    ${endif}
+  ${endif}
   DetailPrint "$(stoppingService)"
   nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "if (Get-Service -Name sing-box-daemon -ErrorAction SilentlyContinue) { Stop-Service -Name sing-box-daemon -Force -ErrorAction Stop; (Get-Service -Name sing-box-daemon).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(10)) }"'
   Pop $1
   ${if} $1 != 0
     Abort "$(stopServiceFailed)"
   ${endif}
+  StrCpy $2 0
+  ${if} $reinstallExistingInstallation == 1
+    StrCpy $2 1
+  ${elseif} $hasExistingInstallation == 0
+  ${andif} $hasInstallationLayout == 1
+    StrCpy $2 1
+  ${endif}
+  ${if} $2 == 1
+  ${andif} $migrateExistingData == ${BST_CHECKED}
+    DetailPrint "$(migratingExistingData)"
+    !insertmacro executeDataTransition "Prepare"
+    ${if} $1 != 0
+      StrCpy $2 $1
+      !insertmacro executeDataTransition "Rollback"
+      StrCpy $1 $2
+      Abort "$(dataMigrationFailed)"
+    ${endif}
+    StrCpy $dataMigrationPrepared 1
+  ${endif}
+!macroend
+
+!macro customInstallBeforeRemovingPreviousVersion
+  ${if} $hasExistingInstallation == 1
+    DetailPrint "$(removingPreviousVersion)"
+  ${endif}
+!macroend
+
+!macro customInstallBeforeApplicationFiles
   DetailPrint "$(copyingApplicationFiles)"
 !macroend
 
@@ -707,6 +1385,7 @@ FunctionEnd
     !insertmacro executeDaemonServiceCommand "install" "" $1 $3
   ${endif}
   ${if} $1 != 0
+    StrCpy $5 $1
     DetailPrint "$(rollingBackInstallation)"
     StrCpy $2 -1
     ClearErrors
@@ -714,12 +1393,91 @@ FunctionEnd
     ${if} ${Errors}
       StrCpy $2 -1
     ${endif}
+    !insertmacro executeDataTransition "Rollback"
+    StrCpy $1 $5
     ${if} $2 == 0
       Abort "$(registerServiceFailedRolledBack)"
     ${else}
       Abort "$(registerServiceFailedRollbackFailed)"
     ${endif}
   ${endif}
+  !insertmacro setInstallationLayoutRegistryView
+  WriteRegDWORD HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "LayoutVersion" 2
+  WriteRegStr HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "InstallationID" "$installationID"
+  WriteRegStr HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "ApplicationDataDirectory" "$applicationDataDirectory"
+  WriteRegStr HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "DaemonDataDirectory" "$daemonDataDirectory"
+  !insertmacro restoreInstallerRegistryView
+  ${if} $dataMigrationPrepared == 1
+    DetailPrint "$(completingDataMigration)"
+  ${endif}
+  !insertmacro executeDataTransition "Commit"
+  ${if} $1 != 0
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(dataMigrationCleanupFailed)"
+  ${endif}
+!macroend
+
+!macro customFinishPage
+  !define MUI_FINISHPAGE_SHOWREADME
+  !define MUI_FINISHPAGE_SHOWREADME_TEXT "$(createDesktopShortcut)"
+  !define MUI_FINISHPAGE_SHOWREADME_FUNCTION "createDesktopShortcut"
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW showDesktopShortcutFinishOption
+  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE leaveCustomFinishPage
+  !insertmacro MUI_PAGE_FINISH
+
+  Function StartApp
+    ${if} ${isUpdated}
+      StrCpy $1 "--updated"
+    ${else}
+      StrCpy $1 ""
+    ${endif}
+    ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$1"
+  FunctionEnd
+
+  Function createDesktopShortcut
+    ${ifNot} ${FileExists} "$newDesktopLink"
+      CreateShortCut "$newDesktopLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
+      ClearErrors
+      WinShell::SetLnkAUMI "$newDesktopLink" "${APP_ID}"
+      System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+    ${endif}
+  FunctionEnd
+
+  Function showDesktopShortcutFinishOption
+    StrCpy $0 0
+    ${if} ${FileExists} "$newDesktopLink"
+    ${orif} ${FileExists} "$oldDesktopLink"
+      StrCpy $0 1
+    ${endif}
+    SetShellVarContext current
+    ${if} ${FileExists} "$DESKTOP\${SHORTCUT_NAME}.lnk"
+    ${orif} ${FileExists} "$DESKTOP\$oldShortcutName.lnk"
+      StrCpy $0 1
+    ${endif}
+    SetShellVarContext all
+    ${if} $0 == 1
+      ${NSD_SetState} $mui.FinishPage.ShowReadme ${BST_UNCHECKED}
+      ShowWindow $mui.FinishPage.ShowReadme ${SW_HIDE}
+      StrCpy $0 90
+    ${else}
+      StrCpy $0 100
+    ${endif}
+    ${ifNot} ${RebootFlag}
+      ${NSD_CreateCheckBox} 120u $0u 195u 10u "$(MUI_TEXT_FINISH_RUN)"
+      Pop $finishRunCheckbox
+      SetCtlColors $finishRunCheckbox "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
+      ${NSD_SetState} $finishRunCheckbox ${BST_CHECKED}
+    ${endif}
+  FunctionEnd
+
+  Function leaveCustomFinishPage
+    ${ifNot} ${RebootFlag}
+      ${NSD_GetState} $finishRunCheckbox $0
+      ${if} $0 == ${BST_CHECKED}
+        Call StartApp
+      ${endif}
+    ${endif}
+  FunctionEnd
+
 !macroend
 
 !macro customUnWelcomePage
@@ -744,8 +1502,22 @@ FunctionEnd
 
 !macro customUnInit
   StrCpy $keepUninstallData ${BST_CHECKED}
+  !insertmacro setInstallationLayoutRegistryView
+  StrCpy $applicationDataDirectory ""
+  StrCpy $installationID ""
+  SetShellVarContext all
+  StrCpy $daemonDataDirectory "$APPDATA\sing-box-daemon"
+  StrCpy $0 0
+  ReadRegDWORD $0 HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "LayoutVersion"
+  ${if} $0 == 2
+    ReadRegStr $applicationDataDirectory HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "ApplicationDataDirectory"
+    ReadRegStr $daemonDataDirectory HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "DaemonDataDirectory"
+    ReadRegStr $installationID HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}" "InstallationID"
+  ${endif}
+  !insertmacro restoreInstallerRegistryView
   InitPluginsDir
   File /oname=$PLUGINSDIR\installer-service.ps1 "${BUILD_RESOURCES_DIR}\installer-service.ps1"
+  File /oname=$PLUGINSDIR\installer-preflight.ps1 "${BUILD_RESOURCES_DIR}\installer-preflight.ps1"
   ${GetParameters} $R0
   ${GetOptions} $R0 "--delete-app-data" $R1
   ${ifNot} ${Errors}
@@ -766,11 +1538,19 @@ FunctionEnd
     ${endif}
     ${if} $keepUninstallData == ${BST_UNCHECKED}
       DetailPrint "$(removingData)"
-      SetShellVarContext all
-      RMDir /r "$APPDATA\sing-box-daemon"
-      SetShellVarContext current
-      RMDir /r "$APPDATA\sing-box"
-      SetShellVarContext all
+      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" -AllowUnsafeInstallationDirectory -DeleteDataDirectories'
+      Pop $1
+      ${if} $1 != 0
+        Abort "$(preflightFailed)"
+      ${endif}
+      ${if} $applicationDataDirectory == ""
+        SetShellVarContext current
+        RMDir /r "$APPDATA\sing-box"
+        SetShellVarContext all
+      ${endif}
+      !insertmacro setInstallationLayoutRegistryView
+      DeleteRegKey HKLM "${INSTALLATION_LAYOUT_REGISTRY_KEY}"
+      !insertmacro restoreInstallerRegistryView
     ${endif}
   ${endIf}
 !macroend

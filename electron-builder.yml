@@ -70,7 +70,7 @@ nsis:
     - ru_RU
   license: LICENSE
   perMachine: true
-  allowToChangeInstallationDirectory: true
+  allowToChangeInstallationDirectory: false
   deleteAppDataOnUninstall: false
   include: build/installer.nsh
   artifactName: SFW-${version}-${env.SFW_ARCHITECTURE}.${ext}

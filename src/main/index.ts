@@ -10,6 +10,7 @@ import {
   UPDATES_PRESENT,
 } from "../shared/ipc";
 import type { DeepLinkImport, ProfileFileImport, TitleBarOverlayColors } from "../shared/ipc";
+import { configureApplicationPaths } from "./applicationPaths";
 import { archiveNativeCrashDumps, captureRuntimeCrash } from "./appReports";
 import { registerApplication } from "./application";
 import { registerDaemonBridge } from "./bridge";
@@ -49,10 +50,7 @@ process.on("uncaughtException", (error) => handleFatal("uncaughtException", erro
 process.on("unhandledRejection", (reason) => handleFatal("unhandledRejection", reason));
 hardenPackagedRuntime();
 
-const userDataPath = developmentSwitchValue("user-data");
-if (userDataPath) {
-  app.setPath("userData", userDataPath);
-}
+configureApplicationPaths(developmentSwitchValue("user-data"));
 secureApplicationUserData();
 
 crashReporter.start({ submitURL: "", uploadToServer: false, compress: false });

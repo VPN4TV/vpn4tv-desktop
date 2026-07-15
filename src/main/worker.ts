@@ -28,6 +28,7 @@ interface WorkerProcess {
   child: ChildProcess;
   applicationTransport: Transport;
   daemonTransport: Transport | null;
+  exitError: Promise<Error>;
 }
 
 let currentWorker: Promise<WorkerProcess> | null = null;
@@ -42,8 +43,14 @@ function spawnWorker(): Promise<WorkerProcess> {
       commandArguments.push("--daemon-relay-socket", daemonRelayEndpoint);
     }
     const child = spawn(daemonBinaryPath(), commandArguments, {
-      stdio: ["pipe", "pipe", "inherit"],
+      stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+    });
+    let standardError = "";
+    child.stderr?.setEncoding("utf-8");
+    child.stderr?.on("data", (data: string) => {
+      process.stderr.write(data);
+      standardError = (standardError + data).slice(-64 * 1024);
     });
     let settled = false;
     const fail = (error: Error) => {
@@ -60,7 +67,17 @@ function spawnWorker(): Promise<WorkerProcess> {
       WORKER_READY_TIMEOUT_MILLISECONDS,
     );
     child.once("error", (error) => fail(error));
-    child.once("exit", () => fail(new Error("worker exited before becoming ready")));
+    const exitError = new Promise<Error>((resolveExitError) => {
+      child.once("exit", (code, signal) => {
+        const status = signal === null ? `code ${code ?? 1}` : `signal ${signal}`;
+        const detail = standardError.trim();
+        const error = new Error(
+          `application worker exited with ${status}${detail === "" ? "" : `: ${detail}`}`,
+        );
+        resolveExitError(error);
+        fail(error);
+      });
+    });
     child.stdout?.setEncoding("utf-8");
     let readinessOutput = "";
     const handleReadinessOutput = (data: string) => {
@@ -81,6 +98,7 @@ function spawnWorker(): Promise<WorkerProcess> {
       clearTimeout(timer);
       resolve({
         child,
+        exitError,
         applicationTransport: createGrpcTransport({
           baseUrl: "http://sing-box-worker",
           nodeOptions: {
@@ -102,6 +120,14 @@ function spawnWorker(): Promise<WorkerProcess> {
   });
 }
 
+async function rethrowWorkerError(worker: WorkerProcess, error: unknown): Promise<never> {
+  const exitError = await Promise.race([
+    worker.exitError,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 100)),
+  ]);
+  throw exitError ?? error;
+}
+
 async function workerConnection(): Promise<WorkerProcess> {
   if (currentWorker === null) {
     const workerPromise = spawnWorker();
@@ -117,24 +143,36 @@ async function workerConnection(): Promise<WorkerProcess> {
 }
 
 export const workerTransport: Transport = {
-  unary: async (method, signal, timeoutMs, header, message, contextValues) =>
-    (await workerConnection()).applicationTransport.unary(
-      method,
-      signal,
-      timeoutMs,
-      header,
-      message,
-      contextValues,
-    ),
-  stream: async (method, signal, timeoutMs, header, input, contextValues) =>
-    (await workerConnection()).applicationTransport.stream(
-      method,
-      signal,
-      timeoutMs,
-      header,
-      input,
-      contextValues,
-    ),
+  unary: async (method, signal, timeoutMs, header, message, contextValues) => {
+    const worker = await workerConnection();
+    try {
+      return await worker.applicationTransport.unary(
+        method,
+        signal,
+        timeoutMs,
+        header,
+        message,
+        contextValues,
+      );
+    } catch (error) {
+      return rethrowWorkerError(worker, error);
+    }
+  },
+  stream: async (method, signal, timeoutMs, header, input, contextValues) => {
+    const worker = await workerConnection();
+    try {
+      return await worker.applicationTransport.stream(
+        method,
+        signal,
+        timeoutMs,
+        header,
+        input,
+        contextValues,
+      );
+    } catch (error) {
+      return rethrowWorkerError(worker, error);
+    }
+  },
 };
 
 async function daemonWorkerConnection(): Promise<Transport> {

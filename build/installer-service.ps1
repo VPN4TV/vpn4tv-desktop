@@ -9,11 +9,22 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
+    [string]$DaemonDataDirectory,
+
     [switch]$AllowUnsafeInstallationDirectoryPermissions
 )
 
 $ErrorActionPreference = "Stop"
 $commandArguments = "service $ServiceAction"
+if ($ServiceAction -eq "install") {
+    if ([string]::IsNullOrWhiteSpace($DaemonDataDirectory) -or
+        $DaemonDataDirectory.Contains('"') -or
+        $DaemonDataDirectory.Contains("`r") -or
+        $DaemonDataDirectory.Contains("`n")) {
+        throw "The daemon data directory is invalid."
+    }
+    $commandArguments += " --working-directory=`"$DaemonDataDirectory`""
+}
 if ($AllowUnsafeInstallationDirectoryPermissions) {
     $commandArguments += " --allow-unsafe-installation-directory-permissions"
 }
