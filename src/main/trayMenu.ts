@@ -185,6 +185,7 @@ export async function showTrayMenu(anchor: Rectangle) {
   window.setBounds(placement.bounds);
   window.setAlwaysOnTop(true);
   window.setFocusable(true);
+  window.setSkipTaskbar(true);
   window.setIgnoreMouseEvents(false);
   window.setOpacity(1);
   menuState = "open";
