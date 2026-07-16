@@ -280,6 +280,7 @@ async function importProfileData(
 ): Promise<void> {
   if (fileName.toLowerCase().endsWith(".bpf")) {
     const content = await applicationService.decodeProfile({ data });
+    await checkConfig(content.config);
     const remote = content.type === ProfileContent_Type.REMOTE;
     // Shared profile files carry LastUpdated in either seconds or milliseconds.
     let lastUpdated: number | undefined;
@@ -479,7 +480,9 @@ const handlers: Record<
       profile.lastUpdated = Date.now();
     } else {
       content = init.content ?? "{}";
-      await checkConfig(content);
+      if (init.content !== undefined) {
+        await checkConfig(content);
+      }
     }
     return await insertProfile(profile, content);
   },
