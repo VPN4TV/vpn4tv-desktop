@@ -14,7 +14,7 @@ $principals = @(
   [System.Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")
 )
 
-function Set-SingBoxAccessControl([string] $targetPath, [bool] $directory) {
+function Set-BoxAccessControl([string] $targetPath, [bool] $directory) {
   if ($directory) {
     $security = [System.Security.AccessControl.DirectorySecurity]::new()
     $inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
@@ -54,11 +54,11 @@ if ($secureExistingData) {
     }
   }
   foreach ($item in ($items | Sort-Object { $_.FullName.Length } -Descending)) {
-    Set-SingBoxAccessControl $item.FullName $item.PSIsContainer
+    Set-BoxAccessControl $item.FullName $item.PSIsContainer
   }
 }
 
-Set-SingBoxAccessControl $path $true
+Set-BoxAccessControl $path $true
 `;
 
 export function secureApplicationUserData(): void {

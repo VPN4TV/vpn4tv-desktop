@@ -4,11 +4,11 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { findSingBoxDirectory } from "./sing-box";
+import { findBoxDirectory } from "./sing-box";
 import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const singBoxDirectory = findSingBoxDirectory();
+const singBoxDirectory = findBoxDirectory();
 
 const scriptArguments = process.argv.slice(2);
 if (scriptArguments[0] === "--") {

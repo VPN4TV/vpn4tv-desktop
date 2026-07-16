@@ -9,7 +9,7 @@ import {
   Platform,
 } from "electron-builder";
 
-import { findSingBoxDirectory } from "./sing-box";
+import { findBoxDirectory } from "./sing-box";
 import { readApplicationVersion } from "./version";
 import { buildWindowsShareModule } from "./windowsShare";
 
@@ -17,7 +17,7 @@ const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const singBoxDirectory = findSingBoxDirectory();
+const singBoxDirectory = findBoxDirectory();
 const signingConfigurationPath = path.join(
   repositoryRoot,
   "signing.local.json",
