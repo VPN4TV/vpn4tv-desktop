@@ -1,4 +1,4 @@
-import { app, BrowserWindow, crashReporter, ipcMain, screen, session, shell } from "electron";
+import { app, BrowserWindow, crashReporter, dialog, ipcMain, screen, session, shell } from "electron";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -11,7 +11,11 @@ import {
 } from "../shared/ipc";
 import type { DeepLinkImport, ProfileFileImport, TitleBarOverlayColors } from "../shared/ipc";
 import { configureApplicationPaths } from "./applicationPaths";
-import { archiveNativeCrashDumps, captureRuntimeCrash } from "./appReports";
+import {
+  archiveNativeCrashDumps,
+  captureRuntimeCrash,
+} from "./appReports";
+import type { RuntimeCrashCaptureResult } from "./appReports";
 import { registerApplication } from "./application";
 import { registerDaemonBridge } from "./bridge";
 import { registerCore } from "./core";
@@ -44,8 +48,29 @@ import {
   restoredMainWindowBounds,
 } from "./windowState";
 
+let handlingFatalError = false;
+
+function fatalErrorMessage(error: unknown, capture: RuntimeCrashCaptureResult): string {
+  const errorObject = error instanceof Error ? error : new Error(String(error));
+  const reason = `${errorObject.name}: ${errorObject.message}`;
+  if (capture.reportPath !== null) {
+    return `sing-box stopped unexpectedly.\n\n${reason}\n\nCrash report:\n${capture.reportPath}`;
+  }
+  return `sing-box stopped unexpectedly.\n\n${reason}\n\nThe crash report could not be saved:\n${capture.saveError ?? "unknown error"}`;
+}
+
 function handleFatal(kind: string, error: unknown): never {
-  captureRuntimeCrash(kind, error);
+  if (handlingFatalError) {
+    process.exit(1);
+  }
+  handlingFatalError = true;
+  const capture = captureRuntimeCrash(kind, error);
+  const message = fatalErrorMessage(error, capture);
+  try {
+    dialog.showErrorBox("sing-box", message);
+  } catch (dialogError) {
+    process.stderr.write(`${message}\n\nFailed to show the error dialog: ${String(dialogError)}\n`);
+  }
   process.exit(1);
 }
 process.on("uncaughtException", (error) => handleFatal("uncaughtException", error));
@@ -115,20 +140,28 @@ function createWindow(): BrowserWindow {
       event.preventDefault();
     }
   });
+  window.webContents.on("preload-error", (_event, preloadPath, error) => {
+    handleFatal(
+      "main-window-preload-error",
+      new Error(`preload script failed: ${preloadPath}`, { cause: error }),
+    );
+  });
   window.webContents.on("render-process-gone", (_event, details) => {
-    if (details.reason !== "clean-exit") {
-      captureRuntimeCrash(
+    if (!quitting && details.reason !== "clean-exit") {
+      handleFatal(
         "render-process-gone",
         new Error(`renderer ${details.reason} (exit code ${details.exitCode})`),
       );
     }
   });
   const rendererURL = developmentRendererURL();
+  let loadPromise: Promise<void>;
   if (rendererURL !== "") {
-    void window.loadURL(rendererURL);
+    loadPromise = window.loadURL(rendererURL);
   } else {
-    void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+    loadPromise = window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
   }
+  void loadPromise.catch((error: unknown) => handleFatal("main-window-load", error));
   attachTestInstrumentation(window);
   mainWindow = window;
   window.on("closed", () => {
