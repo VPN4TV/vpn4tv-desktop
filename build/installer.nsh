@@ -256,11 +256,11 @@ FunctionEnd
   LangString applicationDataDirectoryLabel ${LANG_FARSI} "پوشهٔ دادهٔ برنامه:"
   LangString applicationDataDirectoryLabel ${LANG_RUSSIAN} "Каталог данных приложения:"
 
-  LangString userIndependentApplicationData ${LANG_ENGLISH} "Use a separate application data directory for each user"
-  LangString userIndependentApplicationData ${LANG_SIMPCHINESE} "为每个用户使用独立的应用数据目录"
-  LangString userIndependentApplicationData ${LANG_TRADCHINESE} "為每個使用者使用獨立的應用程式資料目錄"
-  LangString userIndependentApplicationData ${LANG_FARSI} "استفاده از پوشهٔ دادهٔ برنامهٔ جداگانه برای هر کاربر"
-  LangString userIndependentApplicationData ${LANG_RUSSIAN} "Отдельный каталог данных приложения для каждого пользователя"
+  LangString userIndependentApplicationData ${LANG_ENGLISH} "Use the standard user data directory"
+  LangString userIndependentApplicationData ${LANG_SIMPCHINESE} "使用标准用户数据目录"
+  LangString userIndependentApplicationData ${LANG_TRADCHINESE} "使用標準使用者資料目錄"
+  LangString userIndependentApplicationData ${LANG_FARSI} "استفاده از پوشهٔ استاندارد دادهٔ کاربر"
+  LangString userIndependentApplicationData ${LANG_RUSSIAN} "Использовать стандартный каталог данных пользователя"
 
   LangString daemonDataDirectoryLabel ${LANG_ENGLISH} "Daemon data directory:"
   LangString daemonDataDirectoryLabel ${LANG_SIMPCHINESE} "守护进程数据目录："
@@ -310,17 +310,29 @@ FunctionEnd
   LangString dataMigrationCleanupFailed ${LANG_FARSI} "انتقال داده کامل شد، اما دادهٔ قدیمی حذف نشد (کد $1). نصب‌کنندهٔ بعدی دوباره تلاش می‌کند."
   LangString dataMigrationCleanupFailed ${LANG_RUSSIAN} "Перенос завершён, но старые данные удалить не удалось (код $1). Следующий установщик повторит очистку."
 
-  LangString invalidDaemonDataDirectory ${LANG_ENGLISH} "The daemon data directory is unsafe or overlaps the application installation directory:$\r$\n$0"
-  LangString invalidDaemonDataDirectory ${LANG_SIMPCHINESE} "守护进程数据目录不安全，或与应用安装目录重叠：$\r$\n$0"
-  LangString invalidDaemonDataDirectory ${LANG_TRADCHINESE} "守護程序資料目錄不安全，或與應用程式安裝目錄重疊：$\r$\n$0"
-  LangString invalidDaemonDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ سرویس ناامن است یا با پوشهٔ نصب برنامه هم‌پوشانی دارد:$\r$\n$0"
-  LangString invalidDaemonDataDirectory ${LANG_RUSSIAN} "Каталог данных службы небезопасен или пересекается с каталогом установки приложения:$\r$\n$0"
+  LangString overlappingDaemonDataDirectory ${LANG_ENGLISH} "The daemon data directory overlaps the application installation directory:$\r$\n$0"
+  LangString overlappingDaemonDataDirectory ${LANG_SIMPCHINESE} "守护进程数据目录与应用安装目录重叠：$\r$\n$0"
+  LangString overlappingDaemonDataDirectory ${LANG_TRADCHINESE} "守護程序資料目錄與應用程式安裝目錄重疊：$\r$\n$0"
+  LangString overlappingDaemonDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ سرویس با پوشهٔ نصب برنامه هم‌پوشانی دارد:$\r$\n$0"
+  LangString overlappingDaemonDataDirectory ${LANG_RUSSIAN} "Каталог данных службы пересекается с каталогом установки приложения:$\r$\n$0"
 
-  LangString invalidApplicationDataDirectory ${LANG_ENGLISH} "The application data directory is invalid or overlaps the application installation directory or daemon data directory:$\r$\n$0"
-  LangString invalidApplicationDataDirectory ${LANG_SIMPCHINESE} "应用数据目录无效，或与应用安装目录、守护进程数据目录重叠：$\r$\n$0"
-  LangString invalidApplicationDataDirectory ${LANG_TRADCHINESE} "應用程式資料目錄無效，或與應用程式安裝目錄、守護程序資料目錄重疊：$\r$\n$0"
-  LangString invalidApplicationDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ برنامه نامعتبر است یا با پوشهٔ نصب برنامه یا پوشهٔ دادهٔ سرویس هم‌پوشانی دارد:$\r$\n$0"
-  LangString invalidApplicationDataDirectory ${LANG_RUSSIAN} "Каталог данных приложения недопустим или пересекается с каталогом установки приложения либо каталогом данных службы:$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_ENGLISH} "The daemon data directory is unsafe or unsupported:$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_SIMPCHINESE} "守护进程数据目录不安全或不受支持：$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_TRADCHINESE} "守護程序資料目錄不安全或不受支援：$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ سرویس ناامن است یا پشتیبانی نمی‌شود:$\r$\n$0"
+  LangString invalidDaemonDataDirectory ${LANG_RUSSIAN} "Каталог данных службы небезопасен или не поддерживается:$\r$\n$0"
+
+  LangString overlappingApplicationDataDirectory ${LANG_ENGLISH} "The application data directory overlaps the application installation directory or daemon data directory:$\r$\n$0"
+  LangString overlappingApplicationDataDirectory ${LANG_SIMPCHINESE} "应用数据目录与应用安装目录或守护进程数据目录重叠：$\r$\n$0"
+  LangString overlappingApplicationDataDirectory ${LANG_TRADCHINESE} "應用程式資料目錄與應用程式安裝目錄或守護程序資料目錄重疊：$\r$\n$0"
+  LangString overlappingApplicationDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ برنامه با پوشهٔ نصب برنامه یا پوشهٔ دادهٔ سرویس هم‌پوشانی دارد:$\r$\n$0"
+  LangString overlappingApplicationDataDirectory ${LANG_RUSSIAN} "Каталог данных приложения пересекается с каталогом установки приложения или каталогом данных службы:$\r$\n$0"
+
+  LangString invalidApplicationDataDirectory ${LANG_ENGLISH} "The application data directory is invalid, unsafe, or unsupported:$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_SIMPCHINESE} "应用数据目录无效、不安全或不受支持：$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_TRADCHINESE} "應用程式資料目錄無效、不安全或不受支援：$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_FARSI} "پوشهٔ دادهٔ برنامه نامعتبر، ناامن یا پشتیبانی‌نشده است:$\r$\n$0"
+  LangString invalidApplicationDataDirectory ${LANG_RUSSIAN} "Каталог данных приложения недопустим, небезопасен или не поддерживается:$\r$\n$0"
 
   LangString stoppingService ${LANG_ENGLISH} "Stopping the sing-box service..."
   LangString stoppingService ${LANG_SIMPCHINESE} "正在停止 sing-box 守护进程..."
@@ -454,11 +466,35 @@ FunctionEnd
   LangString unsafeInstallationPageSubtitle ${LANG_FARSI} "در صورت امکان مسیر را اصلاح کنید یا نصب ناامن را ادامه دهید."
   LangString unsafeInstallationPageSubtitle ${LANG_RUSSIAN} "Исправьте путь, если это возможно, или продолжите небезопасную установку."
 
+  LangString repairPathPermissionsPageTitle ${LANG_ENGLISH} "Unsafe path permissions"
+  LangString repairPathPermissionsPageTitle ${LANG_SIMPCHINESE} "路径权限不安全"
+  LangString repairPathPermissionsPageTitle ${LANG_TRADCHINESE} "路徑權限不安全"
+  LangString repairPathPermissionsPageTitle ${LANG_FARSI} "مجوزهای مسیر ناامن"
+  LangString repairPathPermissionsPageTitle ${LANG_RUSSIAN} "Небезопасные разрешения пути"
+
+  LangString repairPathPermissionsPageSubtitle ${LANG_ENGLISH} "Repair the permissions or continue with unsafe installation."
+  LangString repairPathPermissionsPageSubtitle ${LANG_SIMPCHINESE} "修复权限，或继续不安全安装。"
+  LangString repairPathPermissionsPageSubtitle ${LANG_TRADCHINESE} "修復權限，或繼續不安全安裝。"
+  LangString repairPathPermissionsPageSubtitle ${LANG_FARSI} "مجوزها را اصلاح کنید یا نصب ناامن را ادامه دهید."
+  LangString repairPathPermissionsPageSubtitle ${LANG_RUSSIAN} "Исправьте разрешения или продолжите небезопасную установку."
+
   LangString unsafeInstallationPageBody ${LANG_ENGLISH} "An unprivileged account can replace this installation path ancestor:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nRepair removes only the dangerous permissions. Unsafe installation leaves the path unchanged."
   LangString unsafeInstallationPageBody ${LANG_SIMPCHINESE} "非管理员账户可以替换此安装路径的上级目录：$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\n修复只会移除危险权限。不安全安装会保持此路径不变。"
   LangString unsafeInstallationPageBody ${LANG_TRADCHINESE} "非系統管理員帳戶可以取代此安裝路徑的上層目錄：$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\n修復只會移除危險權限。不安全安裝會保持此路徑不變。"
   LangString unsafeInstallationPageBody ${LANG_FARSI} "یک حساب غیرمدیر می‌تواند این پوشهٔ بالادستی مسیر نصب را جایگزین کند:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nاصلاح فقط مجوزهای خطرناک را حذف می‌کند. نصب ناامن مسیر را بدون تغییر نگه می‌دارد."
   LangString unsafeInstallationPageBody ${LANG_RUSSIAN} "Учетная запись без прав администратора может заменить этот родительский каталог:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nИсправление удалит только опасные разрешения. Небезопасная установка оставит путь без изменений."
+
+  LangString unsafeDaemonDataDirectoryPageBody ${LANG_ENGLISH} "An unprivileged account can replace this daemon data path ancestor:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nRepair removes only the dangerous permissions. Unsafe installation leaves the path unchanged."
+  LangString unsafeDaemonDataDirectoryPageBody ${LANG_SIMPCHINESE} "非管理员账户可以替换此守护进程数据路径的上级目录：$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\n修复只会移除危险权限。不安全安装会保持此路径不变。"
+  LangString unsafeDaemonDataDirectoryPageBody ${LANG_TRADCHINESE} "非系統管理員帳戶可以取代此守護程序資料路徑的上層目錄：$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\n修復只會移除危險權限。不安全安裝會保持此路徑不變。"
+  LangString unsafeDaemonDataDirectoryPageBody ${LANG_FARSI} "یک حساب غیرمدیر می‌تواند این پوشهٔ بالادستی مسیر دادهٔ سرویس را جایگزین کند:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nاصلاح فقط مجوزهای خطرناک را حذف می‌کند. نصب ناامن مسیر را بدون تغییر نگه می‌دارد."
+  LangString unsafeDaemonDataDirectoryPageBody ${LANG_RUSSIAN} "Учетная запись без прав администратора может заменить этот родительский каталог пути данных службы:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nИсправление удалит только опасные разрешения. Небезопасная установка оставит путь без изменений."
+
+  LangString unsafeApplicationDataDirectoryPageBody ${LANG_ENGLISH} "An unprivileged account can replace this application data path ancestor:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nRepair removes only the dangerous permissions. Unsafe installation leaves the path unchanged."
+  LangString unsafeApplicationDataDirectoryPageBody ${LANG_SIMPCHINESE} "非管理员账户可以替换此应用数据路径的上级目录：$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\n修复只会移除危险权限。不安全安装会保持此路径不变。"
+  LangString unsafeApplicationDataDirectoryPageBody ${LANG_TRADCHINESE} "非系統管理員帳戶可以取代此應用程式資料路徑的上層目錄：$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\n修復只會移除危險權限。不安全安裝會保持此路徑不變。"
+  LangString unsafeApplicationDataDirectoryPageBody ${LANG_FARSI} "یک حساب غیرمدیر می‌تواند این پوشهٔ بالادستی مسیر دادهٔ برنامه را جایگزین کند:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nاصلاح فقط مجوزهای خطرناک را حذف می‌کند. نصب ناامن مسیر را بدون تغییر نگه می‌دارد."
+  LangString unsafeApplicationDataDirectoryPageBody ${LANG_RUSSIAN} "Учетная запись без прав администратора может заменить этот родительский каталог пути данных приложения:$\r$\n$unsafeInstallationAncestor$\r$\n$\r$\nИсправление удалит только опасные разрешения. Небезопасная установка оставит путь без изменений."
 
   LangString repairInstallationPermissionsButton ${LANG_ENGLISH} "&Repair permissions"
   LangString repairInstallationPermissionsButton ${LANG_SIMPCHINESE} "修复权限(&R)"
@@ -466,11 +502,11 @@ FunctionEnd
   LangString repairInstallationPermissionsButton ${LANG_FARSI} "&اصلاح مجوزها"
   LangString repairInstallationPermissionsButton ${LANG_RUSSIAN} "&Исправить разрешения"
 
-  LangString repairingInstallationPermissions ${LANG_ENGLISH} "Repairing installation permissions..."
-  LangString repairingInstallationPermissions ${LANG_SIMPCHINESE} "正在修复安装权限..."
-  LangString repairingInstallationPermissions ${LANG_TRADCHINESE} "正在修復安裝權限..."
-  LangString repairingInstallationPermissions ${LANG_FARSI} "در حال اصلاح مجوزهای نصب..."
-  LangString repairingInstallationPermissions ${LANG_RUSSIAN} "Исправление разрешений установки..."
+  LangString repairingInstallationPermissions ${LANG_ENGLISH} "Repairing path permissions..."
+  LangString repairingInstallationPermissions ${LANG_SIMPCHINESE} "正在修复路径权限..."
+  LangString repairingInstallationPermissions ${LANG_TRADCHINESE} "正在修復路徑權限..."
+  LangString repairingInstallationPermissions ${LANG_FARSI} "در حال اصلاح مجوزهای مسیر..."
+  LangString repairingInstallationPermissions ${LANG_RUSSIAN} "Исправление разрешений пути..."
 
   LangString unsafeInstallationButton ${LANG_ENGLISH} "&Unsafe installation"
   LangString unsafeInstallationButton ${LANG_SIMPCHINESE} "不安全安装(&U)"
@@ -490,11 +526,11 @@ FunctionEnd
   LangString unsafeInstallationConfirmationSubtitle ${LANG_FARSI} "برای ادامه باید تأیید زیر را انتخاب کنید."
   LangString unsafeInstallationConfirmationSubtitle ${LANG_RUSSIAN} "Чтобы продолжить, установите флажок подтверждения ниже."
 
-  LangString unsafeInstallationConfirmationWarning ${LANG_ENGLISH} "The installer and service will skip installation path security checks and permission hardening. This can allow another program to replace sing-box and elevate privileges to SYSTEM."
-  LangString unsafeInstallationConfirmationWarning ${LANG_SIMPCHINESE} "安装程序和守护进程将跳过安装路径安全检查与权限加固。这可能允许其他程序替换 sing-box 并提权到 SYSTEM。"
-  LangString unsafeInstallationConfirmationWarning ${LANG_TRADCHINESE} "安裝程式和守護程序將略過安裝路徑安全檢查與權限強化。這可能允許其他程式取代 sing-box 並將權限提升至 SYSTEM。"
-  LangString unsafeInstallationConfirmationWarning ${LANG_FARSI} "نصب‌کننده و سرویس، بررسی امنیت مسیر نصب و ایمن‌سازی مجوزها را نادیده می‌گیرند. این کار ممکن است به برنامه‌ای دیگر اجازه دهد sing-box را جایگزین کند و سطح دسترسی را به SYSTEM برساند."
-  LangString unsafeInstallationConfirmationWarning ${LANG_RUSSIAN} "Установщик и служба пропустят проверку безопасности пути и усиление разрешений. Другая программа сможет подменить sing-box и повысить привилегии до SYSTEM."
+  LangString unsafeInstallationConfirmationWarning ${LANG_ENGLISH} "The installer and service will skip path security checks and permission hardening. This can allow another program to replace sing-box data or binaries and elevate privileges to SYSTEM."
+  LangString unsafeInstallationConfirmationWarning ${LANG_SIMPCHINESE} "安装程序和守护进程将跳过路径安全检查与权限加固。这可能允许其他程序替换 sing-box 数据或程序文件并提权到 SYSTEM。"
+  LangString unsafeInstallationConfirmationWarning ${LANG_TRADCHINESE} "安裝程式和守護程序將略過路徑安全檢查與權限強化。這可能允許其他程式取代 sing-box 資料或程式檔案並將權限提升至 SYSTEM。"
+  LangString unsafeInstallationConfirmationWarning ${LANG_FARSI} "نصب‌کننده و سرویس، بررسی امنیت مسیر و ایمن‌سازی مجوزها را نادیده می‌گیرند. این کار ممکن است به برنامه‌ای دیگر اجازه دهد داده‌ها یا فایل‌های sing-box را جایگزین کند و سطح دسترسی را به SYSTEM برساند."
+  LangString unsafeInstallationConfirmationWarning ${LANG_RUSSIAN} "Установщик и служба пропустят проверку безопасности путей и усиление разрешений. Другая программа сможет подменить данные или файлы sing-box и повысить привилегии до SYSTEM."
 
   LangString unsafeInstallationAcknowledgement ${LANG_ENGLISH} "I understand and accept this security risk."
   LangString unsafeInstallationAcknowledgement ${LANG_SIMPCHINESE} "我理解并接受此安全风险。"
@@ -550,11 +586,11 @@ FunctionEnd
   LangString installationVolumeNotVerified ${LANG_FARSI} "نصب‌کننده نتوانست درایو نصب را بررسی کند:$\r$\n$0"
   LangString installationVolumeNotVerified ${LANG_RUSSIAN} "Установщик не смог проверить том установки:$\r$\n$0"
 
-  LangString repairInstallationAncestorFailed ${LANG_ENGLISH} "Could not repair the installation path permissions (code $1). No application files were installed."
-  LangString repairInstallationAncestorFailed ${LANG_SIMPCHINESE} "无法修复安装路径权限（代码 $1）。尚未安装任何应用程序文件。"
-  LangString repairInstallationAncestorFailed ${LANG_TRADCHINESE} "無法修復安裝路徑權限（代碼 $1）。尚未安裝任何應用程式檔案。"
-  LangString repairInstallationAncestorFailed ${LANG_FARSI} "اصلاح مجوزهای مسیر نصب ممکن نشد (کد $1). هیچ فایل برنامه‌ای نصب نشد."
-  LangString repairInstallationAncestorFailed ${LANG_RUSSIAN} "Не удалось исправить разрешения пути установки (код $1). Файлы приложения ещё не устанавливались."
+  LangString repairInstallationAncestorFailed ${LANG_ENGLISH} "Could not repair the path permissions (code $1). No application files were installed."
+  LangString repairInstallationAncestorFailed ${LANG_SIMPCHINESE} "无法修复路径权限（代码 $1）。尚未安装任何应用程序文件。"
+  LangString repairInstallationAncestorFailed ${LANG_TRADCHINESE} "無法修復路徑權限（代碼 $1）。尚未安裝任何應用程式檔案。"
+  LangString repairInstallationAncestorFailed ${LANG_FARSI} "اصلاح مجوزهای مسیر ممکن نشد (کد $1). هیچ فایل برنامه‌ای نصب نشد."
+  LangString repairInstallationAncestorFailed ${LANG_RUSSIAN} "Не удалось исправить разрешения пути (код $1). Файлы приложения ещё не устанавливались."
 
   !ifndef BUILD_UNINSTALLER
   LangString resetWorkingDirectoryPrompt ${LANG_ENGLISH} "The sing-box service data directory is invalid:$\r$\n$workingDirectory$\r$\nContinuing will delete this directory so the service can recreate it securely. Continue?"
@@ -897,9 +933,17 @@ FunctionEnd
 !macroend
 
 !macro executeInstallationPreflight OPTIONS
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" ${OPTIONS}'
+  Delete "$PLUGINSDIR\installation-preflight-output.txt"
+  nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\installer-preflight.ps1" -InstallationDirectory "$INSTDIR" -ApplicationDataDirectory "$applicationDataDirectory" -DaemonWorkingDirectory "$daemonDataDirectory" -InstallationID "$installationID" -ResultOutputPath "$PLUGINSDIR\installation-preflight-output.txt" ${OPTIONS}'
   Pop $1
-  Pop $0
+  StrCpy $0 ""
+  ClearErrors
+  FileOpen $4 "$PLUGINSDIR\installation-preflight-output.txt" r
+  ${ifNot} ${Errors}
+    FileReadUTF16LE $4 $0
+    FileClose $4
+  ${endif}
+  Delete "$PLUGINSDIR\installation-preflight-output.txt"
 !macroend
 
 !macro executeInstallationPreflightAsync OPTIONS
@@ -1211,7 +1255,7 @@ FunctionEnd
     ClearErrors
     FileOpen $0 "$installationValidationOutputPath" r
     ${ifNot} ${Errors}
-      FileRead $0 $installationValidationOutput
+      FileReadUTF16LE $0 $installationValidationOutput
       FileClose $0
     ${endif}
     Delete "$installationValidationProcessIDPath"
@@ -1240,10 +1284,12 @@ FunctionEnd
     StrCpy $0 $installationValidationOutput
     StrCpy $1 $installationValidationResult
     Call setInstallationValidationMessage
-    ${if} $installationValidationAllowsUnsafe != 1
-      !insertmacro MUI_HEADER_TEXT "$(invalidInstallationPageTitle)" "$(invalidInstallationPageSubtitle)"
-    ${else}
+    ${if} $installationValidationRepairable == 1
+      !insertmacro MUI_HEADER_TEXT "$(repairPathPermissionsPageTitle)" "$(repairPathPermissionsPageSubtitle)"
+    ${elseif} $installationValidationAllowsUnsafe == 1
       !insertmacro MUI_HEADER_TEXT "$(unsafeInstallationPageTitle)" "$(unsafeInstallationPageSubtitle)"
+    ${else}
+      !insertmacro MUI_HEADER_TEXT "$(invalidInstallationPageTitle)" "$(invalidInstallationPageSubtitle)"
     ${endif}
 
     ${NSD_CreateLabel} 0u 0u 100% 84u "$installationValidationMessage"
@@ -1320,6 +1366,9 @@ FunctionEnd
   FunctionEnd
 
   Function setInstallationValidationMessage
+    StrCpy $installationValidationAllowsUnsafe 0
+    StrCpy $installationValidationRepairable 0
+    StrCpy $unsafeInstallationAncestor ""
     ${if} $1 == 10
       StrCpy $installationValidationAllowsUnsafe 1
       StrCpy $installationValidationMessage "$(unsafeInstallationDirectory)"
@@ -1343,12 +1392,26 @@ FunctionEnd
     ${elseif} $1 == 16
       StrCpy $installationValidationAllowsUnsafe 1
       StrCpy $installationValidationMessage "$(installationVolumeNotVerified)"
+    ${elseif} $1 == 17
+      StrCpy $installationValidationAllowsUnsafe 1
+      StrCpy $installationValidationRepairable 1
+      StrCpy $unsafeInstallationAncestor "$0"
+      StrCpy $installationValidationMessage "$(unsafeDaemonDataDirectoryPageBody)"
+    ${elseif} $1 == 18
+      StrCpy $installationValidationAllowsUnsafe 1
+      StrCpy $installationValidationRepairable 1
+      StrCpy $unsafeInstallationAncestor "$0"
+      StrCpy $installationValidationMessage "$(unsafeApplicationDataDirectoryPageBody)"
     ${elseif} $1 == 23
-      StrCpy $installationValidationMessage "$(invalidDaemonDataDirectory)"
+      StrCpy $installationValidationMessage "$(overlappingDaemonDataDirectory)"
     ${elseif} $1 == 24
-    ${orif} $1 == 25
+      StrCpy $installationValidationMessage "$(overlappingApplicationDataDirectory)"
+    ${elseif} $1 == 25
     ${orif} $1 == 26
+    ${orif} $1 == 28
       StrCpy $installationValidationMessage "$(invalidApplicationDataDirectory)"
+    ${elseif} $1 == 27
+      StrCpy $installationValidationMessage "$(invalidDaemonDataDirectory)"
     ${else}
       StrCpy $installationValidationMessage "$(preflightFailed)"
     ${endif}
@@ -1409,7 +1472,7 @@ FunctionEnd
   Function repairInstallationPermissions
     Pop $0
     !insertmacro showPendingInstallerOperation "$(repairingInstallationPermissions)"
-    !insertmacro executeInstallationPreflight "-RepairInstallationAncestors"
+    !insertmacro executeInstallationPreflight "-RepairPathAncestors"
     ${if} $1 == 0
       StrCpy $allowUnsafeInstallation 0
       Call advanceInstallationDirectoryValidationPage
@@ -1497,8 +1560,10 @@ FunctionEnd
     !insertmacro executeInstallationPreflight ""
   ${endif}
   ${if} $1 == 13
+  ${orif} $1 == 17
+  ${orif} $1 == 18
     ${if} ${Silent}
-      !insertmacro executeInstallationPreflight "-RepairInstallationAncestors"
+      !insertmacro executeInstallationPreflight "-RepairPathAncestors"
       ${if} $1 == 0
         Goto validateInstallationDirectory
       ${elseif} $1 != 20
@@ -1527,7 +1592,11 @@ FunctionEnd
   ${endif}
   ${if} $applicationDataDirectory != ""
     DetailPrint "$(preparingApplicationDataDirectory)"
-    !insertmacro executeInstallationPreflight "-PrepareApplicationDataDirectory"
+    ${if} $allowUnsafeInstallation == 1
+      !insertmacro executeInstallationPreflight "-AllowUnsafeInstallationDirectory -PrepareApplicationDataDirectory"
+    ${else}
+      !insertmacro executeInstallationPreflight "-PrepareApplicationDataDirectory"
+    ${endif}
     ${if} $1 != 0
       Call setInstallationValidationMessage
       Abort "$installationValidationMessage"

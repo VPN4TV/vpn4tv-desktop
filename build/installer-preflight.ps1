@@ -7,7 +7,7 @@ param(
     [string]$ResultCodePath,
     [string]$ProcessIDPath,
     [switch]$AllowUnsafeInstallationDirectory,
-    [switch]$RepairInstallationAncestors,
+    [Alias("RepairInstallationAncestors")][switch]$RepairPathAncestors,
     [switch]$ResetWorkingDirectory,
     [switch]$PrepareApplicationDataDirectory,
     [switch]$DeleteDataDirectories
@@ -472,7 +472,7 @@ function Get-UnsafeInstallationAncestor([string[]]$Paths) {
     return $repairableAncestor
 }
 
-function Repair-InstallationAncestor([string]$Path) {
+function Repair-PathAncestor([string]$Path) {
     $accessControl = Get-Acl -LiteralPath $Path
     $binary = $accessControl.GetSecurityDescriptorBinaryForm()
     $security = [System.Security.AccessControl.RawSecurityDescriptor]::new($binary, 0)
@@ -516,6 +516,14 @@ function Repair-InstallationAncestor([string]$Path) {
         $Path,
         $updatedBinary
     )
+}
+
+function Repair-PathAncestorPermissions([string[]]$Paths) {
+    [array]::Reverse($Paths)
+    foreach ($path in $Paths) {
+        Repair-PathAncestor $path
+    }
+    [array]::Reverse($Paths)
 }
 
 function Remove-WorkingDirectoryTree([string]$Path) {
@@ -642,11 +650,8 @@ try {
             Get-InstallationAncestorPaths $InstallationDirectory $installationVolume
         )
         $unsafeInstallationAncestor = Get-UnsafeInstallationAncestor $installationAncestorPaths
-        if ($RepairInstallationAncestors) {
-            [array]::Reverse($installationAncestorPaths)
-            foreach ($installationAncestorPath in $installationAncestorPaths) {
-                Repair-InstallationAncestor $installationAncestorPath
-            }
+        if ($RepairPathAncestors) {
+            Repair-PathAncestorPermissions $installationAncestorPaths
             $unsafeInstallationAncestor = Get-UnsafeInstallationAncestor $installationAncestorPaths
             if ($null -ne $unsafeInstallationAncestor) {
                 Write-InstallerOutput $unsafeInstallationAncestor.Path
@@ -676,13 +681,31 @@ try {
             Get-InstallationAncestorPaths $workingDirectory $workingVolume
         )
         $unsafeWorkingAncestor = Get-UnsafeInstallationAncestor $workingAncestorPaths
+        if ($AllowUnsafeInstallationDirectory -and
+            $null -ne $unsafeWorkingAncestor -and
+            $unsafeWorkingAncestor.ExitCode -eq 13) {
+            $unsafeWorkingAncestor = $null
+        } elseif ($RepairPathAncestors -and
+            $null -ne $unsafeWorkingAncestor -and
+            $unsafeWorkingAncestor.ExitCode -eq 13) {
+            Repair-PathAncestorPermissions $workingAncestorPaths
+            $unsafeWorkingAncestor = Get-UnsafeInstallationAncestor $workingAncestorPaths
+            if ($null -ne $unsafeWorkingAncestor -and
+                $unsafeWorkingAncestor.ExitCode -eq 13) {
+                Write-InstallerOutput $unsafeWorkingAncestor.Path
+                Exit-Installer 32
+            }
+        }
         if ($null -ne $unsafeWorkingAncestor) {
             Write-InstallerOutput $unsafeWorkingAncestor.Path
-            Exit-Installer 23
+            if ($unsafeWorkingAncestor.ExitCode -eq 13) {
+                Exit-Installer 17
+            }
+            Exit-Installer 27
         }
     } catch {
         Write-InstallerOutput $_.Exception.Message
-        Exit-Installer 23
+        Exit-Installer 27
     }
 
     if (-not [string]::IsNullOrWhiteSpace($ApplicationDataDirectory)) {
@@ -699,8 +722,28 @@ try {
             )
             $unsafeApplicationDataAncestor = Get-UnsafeInstallationAncestor `
                 $applicationDataAncestorPaths
+            if ($AllowUnsafeInstallationDirectory -and
+                $null -ne $unsafeApplicationDataAncestor -and
+                $unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                $unsafeApplicationDataAncestor = $null
+            } elseif ($RepairPathAncestors -and
+                $null -ne $unsafeApplicationDataAncestor -and
+                $unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                Repair-PathAncestorPermissions $applicationDataAncestorPaths
+                $unsafeApplicationDataAncestor = Get-UnsafeInstallationAncestor `
+                    $applicationDataAncestorPaths
+                if ($null -ne $unsafeApplicationDataAncestor -and
+                    $unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                    Write-InstallerOutput $unsafeApplicationDataAncestor.Path
+                    Exit-Installer 32
+                }
+            }
             if ($null -ne $unsafeApplicationDataAncestor) {
-                throw "The application data directory has an unsafe ancestor: $($unsafeApplicationDataAncestor.Path)"
+                Write-InstallerOutput $unsafeApplicationDataAncestor.Path
+                if ($unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                    Exit-Installer 18
+                }
+                Exit-Installer 28
             }
             if (Test-Path -LiteralPath $ApplicationDataDirectory) {
                 $applicationDataItem = Get-Item -LiteralPath $ApplicationDataDirectory -Force
@@ -720,7 +763,7 @@ try {
             }
         } catch {
             Write-InstallerOutput $_.Exception.Message
-            Exit-Installer 24
+            Exit-Installer 28
         }
     }
 

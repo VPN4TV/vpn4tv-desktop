@@ -38,6 +38,8 @@ try {
     $processStartInformation.CreateNoWindow = $true
     $processStartInformation.RedirectStandardOutput = $true
     $processStartInformation.RedirectStandardError = $true
+    $processStartInformation.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $processStartInformation.StandardErrorEncoding = [System.Text.Encoding]::UTF8
 
     $process = [System.Diagnostics.Process]::Start($processStartInformation)
     if ($null -eq $process) {
