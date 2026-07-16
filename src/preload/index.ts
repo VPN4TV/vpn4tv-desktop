@@ -25,6 +25,9 @@ import {
   SERVERS_CALL,
   SETTINGS_CALL,
   SETUP_CALL,
+  TERMINAL_CLIPBOARD_READ,
+  TERMINAL_CLIPBOARD_WRITE,
+  TERMINAL_CONTEXT_MENU,
   TERMINAL_WINDOW_CLOSE,
   TERMINAL_WINDOW_OPEN,
   UPDATES_CALL,
@@ -197,6 +200,10 @@ const bridge: DesktopBridge = {
     closeWindow: () => {
       ipcRenderer.send(TERMINAL_WINDOW_CLOSE);
     },
+    readClipboardText: () => ipcRenderer.invoke(TERMINAL_CLIPBOARD_READ),
+    writeClipboardText: (text) => ipcRenderer.invoke(TERMINAL_CLIPBOARD_WRITE, text),
+    openContextMenu: (selectionText) =>
+      ipcRenderer.invoke(TERMINAL_CONTEXT_MENU, selectionText),
   },
   settings: {
     get: () => callSettings("get"),

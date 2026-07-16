@@ -86,6 +86,9 @@ export function createDesktopHost(): DesktopHost {
         void bridge.terminal.openWindow(route).catch(showError);
       },
       closeWindow: () => bridge.terminal.closeWindow(),
+      readClipboardText: () => bridge.terminal.readClipboardText(),
+      writeClipboardText: (text) => bridge.terminal.writeClipboardText(text),
+      openContextMenu: (selectionText) => bridge.terminal.openContextMenu(selectionText),
     },
     setup: {
       repairInstall: () => bridge.setup.repairInstall(),

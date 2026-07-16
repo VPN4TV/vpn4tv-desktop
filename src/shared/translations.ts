@@ -125,6 +125,18 @@ export const DESKTOP_TRANSLATIONS = {
     "fa": "حذف",
     "ru": "Удалить",
   },
+  "Copy": {
+    "zh-Hans": "复制",
+    "zh-Hant": "複製",
+    "fa": "کپی",
+    "ru": "Копировать",
+  },
+  "Paste": {
+    "zh-Hans": "粘贴",
+    "zh-Hant": "貼上",
+    "fa": "چسباندن",
+    "ru": "Вставить",
+  },
   "Share": {
     "zh-Hans": "分享",
     "zh-Hant": "分享",

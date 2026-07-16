@@ -1,14 +1,77 @@
-import { BrowserWindow, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, clipboard, ipcMain, shell } from "electron";
+import type { WebContents } from "electron";
 import { join } from "node:path";
 
-import { TERMINAL_WINDOW_CLOSE, TERMINAL_WINDOW_OPEN } from "../shared/ipc";
+import {
+  TERMINAL_CLIPBOARD_READ,
+  TERMINAL_CLIPBOARD_WRITE,
+  TERMINAL_CONTEXT_MENU,
+  TERMINAL_WINDOW_CLOSE,
+  TERMINAL_WINDOW_OPEN,
+} from "../shared/ipc";
+import type { TerminalContextMenuResult } from "../shared/ipc";
+import { desktopLanguageFromLocale, translateDesktop } from "../shared/translations";
 import { captureRuntimeCrash } from "./appReports";
 import { developmentRendererURL } from "./development";
+import { preferredLocale } from "./locale";
 import { resourcePath } from "./resources";
 import { titleBarOverlay } from "./titleBarOverlay";
 
 export function registerTerminalWindows(onAllClosed: () => void): Set<BrowserWindow> {
   const windows = new Set<BrowserWindow>();
+  const terminalWindow = (sender: WebContents): BrowserWindow => {
+    const window = BrowserWindow.fromWebContents(sender);
+    if (window === null || !windows.has(window)) {
+      throw new Error("invalid terminal window");
+    }
+    return window;
+  };
+
+  ipcMain.handle(TERMINAL_CLIPBOARD_READ, (event) => {
+    terminalWindow(event.sender);
+    return clipboard.readText();
+  });
+
+  ipcMain.handle(TERMINAL_CLIPBOARD_WRITE, (event, text: unknown) => {
+    terminalWindow(event.sender);
+    if (typeof text !== "string") {
+      throw new Error("invalid terminal clipboard text");
+    }
+    clipboard.writeText(text);
+  });
+
+  ipcMain.handle(TERMINAL_CONTEXT_MENU, (event, selectionText: unknown) => {
+    const window = terminalWindow(event.sender);
+    if (typeof selectionText !== "string") {
+      throw new Error("invalid terminal selection");
+    }
+    const language = desktopLanguageFromLocale(preferredLocale());
+    const pasteEnabled = clipboard.readText() !== "";
+    return new Promise<TerminalContextMenuResult>((resolve) => {
+      let resolved = false;
+      const finish = (result: TerminalContextMenuResult) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(result);
+        }
+      };
+      Menu.buildFromTemplate([
+        {
+          label: translateDesktop(language, "Copy"),
+          enabled: selectionText !== "",
+          click: () => {
+            clipboard.writeText(selectionText);
+            finish({ action: "copy" });
+          },
+        },
+        {
+          label: translateDesktop(language, "Paste"),
+          enabled: pasteEnabled,
+          click: () => finish({ action: "paste", text: clipboard.readText() }),
+        },
+      ]).popup({ window, callback: () => finish(null) });
+    });
+  });
 
   ipcMain.handle(TERMINAL_WINDOW_OPEN, async (_event, route: string) => {
     const overlay = titleBarOverlay();

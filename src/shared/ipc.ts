@@ -56,10 +56,21 @@ export const PREFERENCES_SNAPSHOT = "preferences:snapshot";
 
 export const TERMINAL_WINDOW_OPEN = "terminal:window-open";
 export const TERMINAL_WINDOW_CLOSE = "terminal:window-close";
+export const TERMINAL_CLIPBOARD_READ = "terminal:clipboard-read";
+export const TERMINAL_CLIPBOARD_WRITE = "terminal:clipboard-write";
+export const TERMINAL_CONTEXT_MENU = "terminal:context-menu";
+
+export type TerminalContextMenuResult =
+  | { action: "copy" }
+  | { action: "paste"; text: string }
+  | null;
 
 export interface TerminalBridge {
   openWindow(route: string): Promise<void>;
   closeWindow(): void;
+  readClipboardText(): Promise<string>;
+  writeClipboardText(text: string): Promise<void>;
+  openContextMenu(selectionText: string): Promise<TerminalContextMenuResult>;
 }
 
 export type ProfilesResult = { ok: true; value: unknown } | { ok: false; error: string };
