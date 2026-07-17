@@ -38,16 +38,24 @@ class SettingsDatabase extends DatabaseSync {
 
 let database: SettingsDatabase | null = null;
 
-function decryptLegacyString(value: string): string {
-  if (!value.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX)) {
+function isLegacyEncryptedString(value: string): boolean {
+  return value.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX);
+}
+
+function decryptLegacyString(value: string): string | null {
+  if (!isLegacyEncryptedString(value)) {
     return value;
   }
   if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error("credential decryption is unavailable");
+    return null;
   }
-  return safeStorage.decryptString(
-    Buffer.from(value.slice(LEGACY_ENCRYPTED_VALUE_PREFIX.length), "base64"),
-  );
+  try {
+    return safeStorage.decryptString(
+      Buffer.from(value.slice(LEGACY_ENCRYPTED_VALUE_PREFIX.length), "base64"),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function migrateLegacyEncryptedStrings(store: SettingsDatabase): void {
@@ -64,16 +72,15 @@ function migrateLegacyEncryptedStrings(store: SettingsDatabase): void {
     githubTokenRow === undefined ? undefined : decodePreference(githubTokenRow.data);
   const encryptedGithubToken =
     typeof githubTokenValue === "string" &&
-    githubTokenValue.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX)
+    isLegacyEncryptedString(githubTokenValue)
       ? githubTokenValue
       : undefined;
   const encryptedProfiles = profileRows.filter((row) =>
-    row.remote_url.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX),
+    isLegacyEncryptedString(row.remote_url),
   );
   const encryptedServers = serverRows.filter(
     (row) =>
-      row.url.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX) ||
-      row.secret.startsWith(LEGACY_ENCRYPTED_VALUE_PREFIX),
+      isLegacyEncryptedString(row.url) || isLegacyEncryptedString(row.secret),
   );
   if (
     encryptedGithubToken === undefined &&
@@ -91,17 +98,39 @@ function migrateLegacyEncryptedStrings(store: SettingsDatabase): void {
     const updateServer = store.prepare(
       "UPDATE remote_servers SET url = ?, secret = ? WHERE id = ?",
     );
+    const deleteServer = store.prepare("DELETE FROM remote_servers WHERE id = ?");
+    const deletedServerIds = new Set<string>();
     for (const row of encryptedServers) {
-      updateServer.run(
-        decryptLegacyString(row.url),
-        decryptLegacyString(row.secret),
-        row.id,
-      );
+      const url = decryptLegacyString(row.url);
+      const secret = decryptLegacyString(row.secret);
+      if (url === null || secret === null) {
+        deleteServer.run(row.id);
+        deletedServerIds.add(row.id);
+      } else {
+        updateServer.run(url, secret, row.id);
+      }
+    }
+    if (deletedServerIds.size > 0) {
+      const activeServerRow = store
+        .prepare("SELECT data FROM preferences WHERE name = 'active_remote_server_id'")
+        .get() as Pick<PreferenceRow, "data"> | undefined;
+      const activeServerId =
+        activeServerRow === undefined ? undefined : decodePreference(activeServerRow.data);
+      if (typeof activeServerId === "string" && deletedServerIds.has(activeServerId)) {
+        store
+          .prepare("DELETE FROM preferences WHERE name = 'active_remote_server_id'")
+          .run();
+      }
     }
     if (encryptedGithubToken !== undefined) {
-      store
-        .prepare("UPDATE preferences SET data = ? WHERE name = 'github_token'")
-        .run(encodePreference(decryptLegacyString(encryptedGithubToken)));
+      const githubToken = decryptLegacyString(encryptedGithubToken);
+      if (githubToken === null) {
+        store.prepare("DELETE FROM preferences WHERE name = 'github_token'").run();
+      } else {
+        store
+          .prepare("UPDATE preferences SET data = ? WHERE name = 'github_token'")
+          .run(encodePreference(githubToken));
+      }
     }
   })();
 }
