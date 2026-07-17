@@ -17,11 +17,12 @@ export function createIpcTransport(): Transport {
     });
   }
   return {
-    async unary(method, signal, _timeoutMs, _header, input) {
+    async unary(method, signal, _timeoutMs, header, input) {
       signal?.throwIfAborted();
       const result = await window.desktop.daemon.unary(
         method.parent.typeName,
         method.name,
+        Array.from(new Headers(header).entries()),
         toBinary(method.input, create(method.input, input)),
       );
       if (!result.ok) {
@@ -36,7 +37,7 @@ export function createIpcTransport(): Transport {
         message: fromBinary(method.output, result.data),
       };
     },
-    async stream(method, signal, _timeoutMs, _header, input) {
+    async stream(method, signal, _timeoutMs, header, input) {
       signal?.throwIfAborted();
       const id = nextStreamId++;
       const events = createWritableIterable<StreamEvent>();
@@ -70,7 +71,12 @@ export function createIpcTransport(): Transport {
         );
       };
       signal?.addEventListener("abort", abort, { once: true });
-      window.desktop.daemon.streamOpen(id, method.parent.typeName, method.name);
+      window.desktop.daemon.streamOpen(
+        id,
+        method.parent.typeName,
+        method.name,
+        Array.from(new Headers(header).entries()),
+      );
       const inputIterator = input[Symbol.asyncIterator]();
       void (async () => {
         try {

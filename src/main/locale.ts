@@ -15,6 +15,8 @@ export function preferredLocale(): string {
 }
 
 export const localeInterceptor: Interceptor = (next) => async (request) => {
-  request.header.set("accept-language", preferredLocale());
+  if (!request.header.has("accept-language")) {
+    request.header.set("accept-language", preferredLocale());
+  }
   return next(request);
 };

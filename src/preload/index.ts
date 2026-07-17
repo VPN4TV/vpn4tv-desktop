@@ -92,9 +92,10 @@ ipcRenderer.on(UPDATES_PRESENT, () => {
 const bridge: DesktopBridge = {
   platform: process.platform,
   daemon: {
-    unary: (service, method, request) => ipcRenderer.invoke(DAEMON_UNARY, service, method, request),
-    streamOpen: (id, service, method) => {
-      ipcRenderer.send(DAEMON_STREAM_OPEN, id, service, method);
+    unary: (service, method, header, request) =>
+      ipcRenderer.invoke(DAEMON_UNARY, service, method, header, request),
+    streamOpen: (id, service, method, header) => {
+      ipcRenderer.send(DAEMON_STREAM_OPEN, id, service, method, header);
     },
     streamSend: (id, request) => {
       ipcRenderer.send(DAEMON_STREAM_SEND, id, request);

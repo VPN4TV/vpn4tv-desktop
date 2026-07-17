@@ -36,8 +36,13 @@ export type StreamEvent =
   | { id: number; type: "end"; error?: BridgeError };
 
 export interface DaemonBridge {
-  unary(service: string, method: string, request: Uint8Array): Promise<UnaryResult>;
-  streamOpen(id: number, service: string, method: string): void;
+  unary(
+    service: string,
+    method: string,
+    header: [string, string][],
+    request: Uint8Array,
+  ): Promise<UnaryResult>;
+  streamOpen(id: number, service: string, method: string, header: [string, string][]): void;
   streamSend(id: number, request: Uint8Array): void;
   streamEnd(id: number): void;
   streamCancel(id: number): void;
