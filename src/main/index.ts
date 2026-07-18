@@ -23,6 +23,7 @@ import { settingsDatabase } from "./database";
 import { developmentRendererURL, developmentSwitchValue, hardenPackagedRuntime } from "./development";
 import { hasLoginItemArgument, migrateLoginItem, wasOpenedAtLogin } from "./loginItem";
 import { registerPreferences } from "./preferences";
+import { registerOpenConnectBrowser } from "./openConnectBrowser";
 import { registerProfiles } from "./profiles";
 import { registerSetup } from "./repair";
 import { registerReports } from "./reports";
@@ -373,6 +374,7 @@ if (!singleInstanceLock) {
       }
     });
     registerDaemonBridge();
+    registerOpenConnectBrowser();
     registerSetup(() => daemonState.retryConnection());
     registerCore();
     registerReports();

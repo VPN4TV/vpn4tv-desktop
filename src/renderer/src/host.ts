@@ -90,6 +90,9 @@ export function createDesktopHost(): DesktopHost {
       writeClipboardText: (text) => bridge.terminal.writeClipboardText(text),
       openContextMenu: (selectionText) => bridge.terminal.openContextMenu(selectionText),
     },
+    openConnectBrowser: {
+      authenticate: (request) => bridge.openConnectBrowser.authenticate(request),
+    },
     setup: {
       repairInstall: () => bridge.setup.repairInstall(),
       repairStart: () => bridge.setup.repairStart(),

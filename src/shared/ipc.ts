@@ -78,6 +78,25 @@ export interface TerminalBridge {
   openContextMenu(selectionText: string): Promise<TerminalContextMenuResult>;
 }
 
+export const OPENCONNECT_BROWSER_AUTHENTICATE = "openconnect-browser:authenticate";
+
+export interface OpenConnectBrowserRequest {
+  url: string;
+  finalURL: string;
+  cookieNames: string[];
+  headerNames: string[];
+}
+
+export interface OpenConnectBrowserResult {
+  finalURL: string;
+  cookies: Array<{ name: string; value: string }>;
+  headers: Array<{ name: string; values: string[] }>;
+}
+
+export interface OpenConnectBrowserBridge {
+  authenticate(request: OpenConnectBrowserRequest): Promise<OpenConnectBrowserResult | null>;
+}
+
 export type ProfilesResult = { ok: true; value: unknown } | { ok: false; error: string };
 
 export type ProfileType = "local" | "remote";
@@ -344,6 +363,7 @@ export interface DesktopBridge {
   servers: ServersBridge;
   preferences: PreferencesBridge;
   terminal: TerminalBridge;
+  openConnectBrowser: OpenConnectBrowserBridge;
   settings: SettingsBridge;
   updates: UpdatesBridge;
   app: AppBridge;

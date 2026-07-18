@@ -15,6 +15,7 @@ import {
   DAEMON_STREAM_SEND,
   DAEMON_UNARY,
   DEEP_LINK_IMPORT,
+  OPENCONNECT_BROWSER_AUTHENTICATE,
   PREFERENCES_CALL,
   PREFERENCES_CHANGED,
   PREFERENCES_SNAPSHOT,
@@ -205,6 +206,9 @@ const bridge: DesktopBridge = {
     writeClipboardText: (text) => ipcRenderer.invoke(TERMINAL_CLIPBOARD_WRITE, text),
     openContextMenu: (selectionText) =>
       ipcRenderer.invoke(TERMINAL_CONTEXT_MENU, selectionText),
+  },
+  openConnectBrowser: {
+    authenticate: (request) => ipcRenderer.invoke(OPENCONNECT_BROWSER_AUTHENTICATE, request),
   },
   settings: {
     get: () => callSettings("get"),
