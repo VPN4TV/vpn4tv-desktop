@@ -9,7 +9,7 @@ import type {
   WorkingDirectoryInfo,
 } from "../shared/ipc";
 import { desktopService, managedService } from "./daemon";
-import { runElevatedWindowsServiceCommand } from "./repair";
+import { runElevatedServiceCommand } from "./repair";
 import { daemonState } from "./state";
 
 async function info(): Promise<CoreInfo> {
@@ -36,7 +36,7 @@ async function setInsecureModeEnabled(enabled: boolean): Promise<void> {
     throw new Error("invalid insecure mode setting");
   }
   if (enabled) {
-    await runElevatedWindowsServiceCommand(["service", "set-insecure-mode", "true"]);
+    await runElevatedServiceCommand(["service", "set-insecure-mode", "true"]);
     return;
   }
   if (desktopService === null) {

@@ -40,7 +40,6 @@ import { daemonState } from "./state";
 import { initializeTray, updateTrayVisibility } from "./tray";
 import { registerUpdates, runStartupUpdateCheck } from "./updates";
 import { prepareTrayMenuWindow, showTrayMenu } from "./trayMenu";
-import { secureApplicationUserData } from "./userDataSecurity";
 import { registerTerminalWindows } from "./terminalWindows";
 import { applyTitleBarOverlayColors, titleBarOverlay } from "./titleBarOverlay";
 import {
@@ -79,7 +78,6 @@ process.on("unhandledRejection", (reason) => handleFatal("unhandledRejection", r
 hardenPackagedRuntime();
 
 configureApplicationPaths(developmentSwitchValue("user-data"));
-secureApplicationUserData();
 
 crashReporter.start({ submitURL: "", uploadToServer: false, compress: false });
 

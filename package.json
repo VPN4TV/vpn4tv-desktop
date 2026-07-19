@@ -18,6 +18,9 @@
     "package-dev:win": "tsx scripts/package.ts win-dev x64",
     "package:win": "tsx scripts/package.ts win",
     "package:linux": "tsx scripts/package.ts linux",
+    "package:linux:deb": "tsx scripts/package.ts linux deb",
+    "package:linux:rpm": "tsx scripts/package.ts linux rpm",
+    "package:linux:pacman": "tsx scripts/package.ts linux pacman",
     "postinstall": "electron-builder install-app-deps",
     "typecheck": "tsc -b"
   },

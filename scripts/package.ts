@@ -460,26 +460,64 @@ async function packageWindows() {
   }
 }
 
+const linuxArchitectures = [
+  {
+    goArchitecture: "amd64",
+    builderArchitectureArgument: "--x64",
+    artifactArchitecture: "x64",
+  },
+  {
+    goArchitecture: "arm64",
+    builderArchitectureArgument: "--arm64",
+    artifactArchitecture: "arm64",
+  },
+] as const;
+
+const linuxTargets = new Set(["deb", "rpm", "pacman"]);
+
 async function packageLinux() {
+  const requestedArchitectures = new Set<string>();
+  const requestedTargets: string[] = [];
+  const supportedArchitectures = new Set<string>(
+    linuxArchitectures.map(
+      (architecture) => architecture.artifactArchitecture,
+    ),
+  );
+  for (const argument of process.argv.slice(3)) {
+    if (argument === "--") {
+      continue;
+    }
+    if (supportedArchitectures.has(argument)) {
+      requestedArchitectures.add(argument);
+    } else if (linuxTargets.has(argument)) {
+      requestedTargets.push(argument);
+    } else {
+      throw new Error(`unknown Linux package argument: ${argument}`);
+    }
+  }
+  const selectedArchitectures = linuxArchitectures.filter(
+    (architecture) =>
+      requestedArchitectures.size === 0 ||
+      requestedArchitectures.has(architecture.artifactArchitecture),
+  );
   runChecked("electron-vite", ["build"]);
-  for (const [goArchitecture, builderArchitecture] of [
-    ["amd64", "--x64"],
-    ["arm64", "--arm64"],
-  ]) {
+  for (const architecture of selectedArchitectures) {
     await buildBoxdd(
       "linux",
-      goArchitecture,
+      architecture.goArchitecture,
       path.join(repositoryRoot, "bin", "sing-box-daemon"),
     );
-    runChecked("electron-builder", [
+    const argumentsList = [
       "--linux",
-      builderArchitecture,
+      ...requestedTargets,
+      architecture.builderArchitectureArgument,
       "--config",
       "electron-builder.yml",
       `--config.extraMetadata.version=${readApplicationVersion()}`,
       "--publish",
       "never",
-    ]);
+    ];
+    runChecked("electron-builder", argumentsList);
   }
 }
 

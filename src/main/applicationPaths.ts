@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { readWindowsInstallationLayout } from "./installationLayout";
+import { secureApplicationUserData } from "./userDataSecurity";
 
 export interface ApplicationPaths {
   userData: string;
@@ -43,9 +44,9 @@ export function configureApplicationPaths(developmentUserDataPath: string): Appl
 
   const sessionDataPath = join(paths.userData, "session");
   const crashDumpsPath = join(paths.userData, "crash_dumps");
-  mkdirSync(paths.userData, { recursive: true });
-  mkdirSync(sessionDataPath, { recursive: true });
-  mkdirSync(crashDumpsPath, { recursive: true });
+  secureApplicationUserData(paths.userData);
+  mkdirSync(sessionDataPath, { recursive: true, mode: 0o700 });
+  mkdirSync(crashDumpsPath, { recursive: true, mode: 0o700 });
   app.setPath("userData", paths.userData);
   app.setPath("sessionData", sessionDataPath);
   app.setPath("crashDumps", crashDumpsPath);

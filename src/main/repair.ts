@@ -183,13 +183,15 @@ function runElevatedWindows(commandArguments: string[]): Promise<number> {
   });
 }
 
-export async function runElevatedWindowsServiceCommand(
+export async function runElevatedServiceCommand(
   commandArguments: string[],
 ): Promise<boolean> {
-  if (process.platform !== "win32") {
-    throw new Error("elevated Windows service commands are not supported on this platform");
+  if (process.platform !== "win32" && process.platform !== "linux") {
+    throw new Error("elevated service commands are not supported on this platform");
   }
-  const exitCode = await runElevatedWindows(commandArguments);
+  const exitCode = await (process.platform === "linux"
+    ? runElevatedLinux(commandArguments)
+    : runElevatedWindows(commandArguments));
   if (exitCode === 0) {
     return true;
   }
