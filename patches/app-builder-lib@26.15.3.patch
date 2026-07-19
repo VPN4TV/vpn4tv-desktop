@@ -82,3 +82,34 @@ index 5b95e10..ddc04eb 100644
 +      !endif
 +
        !ifdef MENU_FILENAME
+diff --git a/out/targets/LinuxTargetHelper.js b/out/targets/LinuxTargetHelper.js
+--- a/out/targets/LinuxTargetHelper.js
++++ b/out/targets/LinuxTargetHelper.js
+@@ -185,8 +185,10 @@ class LinuxTargetHelper {
+     getSanitizedVersion(target) {
+         const { appInfo: { version }, } = this.packager;
+         switch (target) {
+-            case "pacman":
+-                return version.replace(/-/g, "_");
++            case "pacman": {
++                const prereleaseSeparator = version.indexOf("-");
++                return prereleaseSeparator === -1 ? version : version.slice(0, prereleaseSeparator);
++            }
+             case "rpm":
+             case "deb":
+                 return version.replace(/-/g, "~");
+diff --git a/out/targets/FpmTarget.js b/out/targets/FpmTarget.js
+--- a/out/targets/FpmTarget.js
++++ b/out/targets/FpmTarget.js
+@@ -207,6 +207,7 @@ class FpmTarget extends core_1.Target {
+         (0, builder_util_1.use)(packager.info.metadata.license, it => args.push("--license", it));
+-        (0, builder_util_1.use)(appInfo.buildNumber, it => args.push("--iteration", 
+-        // dashes are not supported for iteration in older versions of fpm
+-        // https://github.com/jordansissel/fpm/issues/1833
+-        it.split("-").join("_")));
++        const prereleaseSeparator = appInfo.version.indexOf("-");
++        const packageRelease = target === "pacman" && prereleaseSeparator !== -1
++            ? `0.${appInfo.version.slice(prereleaseSeparator + 1)}`
++            : appInfo.buildNumber;
++        (0, builder_util_1.use)(packageRelease, it => args.push("--iteration", it.split("-").join("_")));
+         (0, builder_util_1.use)(options.fpm, it => args.push(...it));
