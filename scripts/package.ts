@@ -508,6 +508,11 @@ const linuxArchitectures = [
     builderArchitectureArgument: "--arm64",
     artifactArchitecture: "arm64",
   },
+  {
+    goArchitecture: "arm",
+    builderArchitectureArgument: "--armv7l",
+    artifactArchitecture: "armv7l",
+  },
 ] as const;
 
 const linuxTargets = new Set(["deb", "rpm", "pacman"]);
