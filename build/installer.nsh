@@ -1,4 +1,5 @@
 ManifestDPIAware true
+SetDateSave off
 SetFont "Segoe UI" 9
 
 !include WinMessages.nsh

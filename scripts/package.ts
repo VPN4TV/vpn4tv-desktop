@@ -10,7 +10,8 @@ import {
 } from "electron-builder";
 
 import { findBoxDirectory } from "./sing-box";
-import { readApplicationVersion } from "./version";
+import { configureReproducibleBuild } from "./reproducibility";
+import { readApplicationVersion, readGoVersion } from "./version";
 import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(
@@ -18,6 +19,7 @@ const repositoryRoot = path.resolve(
   "..",
 );
 const singBoxDirectory = findBoxDirectory();
+const dashboardDirectory = path.join(repositoryRoot, "dashboard");
 const signingConfigurationPath = path.join(
   repositoryRoot,
   "signing.local.json",
@@ -26,9 +28,20 @@ const packageMode = process.argv[2] ?? "win";
 const developmentPackage =
   packageMode === "win-dev" || packageMode === "win-dev-architecture";
 
+const sourceDateEpoch = configureReproducibleBuild([
+  repositoryRoot,
+  singBoxDirectory,
+  dashboardDirectory,
+]);
+const goVersion = readGoVersion();
+
 interface WindowsSigningConfiguration {
   certificateFile: string;
   certificatePassword: string;
+}
+
+function goEnvironment(): NodeJS.ProcessEnv {
+  return { ...process.env, GOTOOLCHAIN: goVersion };
 }
 
 function runChecked(
@@ -47,6 +60,26 @@ function runChecked(
   }
   if (result.status !== 0) {
     throw new Error(`${command} exited with code ${result.status ?? 1}`);
+  }
+}
+
+function verifyGoVersion() {
+  const result = spawnSync("go", ["env", "GOVERSION"], {
+    cwd: singBoxDirectory,
+    encoding: "utf-8",
+    env: goEnvironment(),
+  });
+  if (result.error) {
+    throw new Error(`go: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`go exited with code ${result.status ?? 1}`);
+  }
+  const actualVersion = result.stdout.trim();
+  if (actualVersion !== goVersion) {
+    throw new Error(
+      `Go ${goVersion} is required, current version is ${actualVersion}`,
+    );
   }
 }
 
@@ -86,7 +119,7 @@ function ensureGenerated() {
     );
   }
   if (!fs.existsSync(path.join(repositoryRoot, "dashboard", "node_modules"))) {
-    runChecked("pnpm", ["-C", "dashboard", "install"]);
+    runChecked("pnpm", ["-C", "dashboard", "install", "--frozen-lockfile"]);
   }
   runChecked("pnpm", ["-C", "dashboard", "generate"]);
   runChecked("pnpm", ["generate"]);
@@ -112,7 +145,7 @@ function buildBoxdd(
       `-target=${goOperatingSystem}/${goArchitecture}`,
       `-output=${outputPath}`,
     ],
-    undefined,
+    goEnvironment(),
     singBoxDirectory,
   );
 }
@@ -159,7 +192,11 @@ function stageWindowsCronetLibrary(
   const result = spawnSync(
     "go",
     ["list", "-m", "-f", "{{.Dir}}", modulePath],
-    { cwd: singBoxDirectory, encoding: "utf-8" },
+    {
+      cwd: singBoxDirectory,
+      encoding: "utf-8",
+      env: goEnvironment(),
+    },
   );
   if (result.error) {
     throw new Error(`go: ${result.error.message}`);
@@ -522,6 +559,8 @@ async function packageLinux() {
 }
 
 async function main(): Promise<void> {
+  console.info(`[package] SOURCE_DATE_EPOCH=${sourceDateEpoch}`);
+  verifyGoVersion();
   if (
     packageMode !== "win-architecture" &&
     packageMode !== "win-dev-architecture"

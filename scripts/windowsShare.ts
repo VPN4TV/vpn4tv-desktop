@@ -17,6 +17,8 @@ const toolchainDirectory = path.join(
 );
 const cargoTargetDirectory = path.join(toolchainDirectory, "cargo-target");
 const xwinVersion = "0.9.0";
+const windowsSdkVersion = "10.0.26100";
+const windowsCrtVersion = "14.44.17.14";
 
 const architectures = {
   x64: {
@@ -112,7 +114,14 @@ function xwinExecutablePath(): string {
 function ensureXwin() {
   const executablePath = xwinExecutablePath();
   if (fs.existsSync(executablePath)) {
-    return;
+    const installedVersion = commandOutput(executablePath, ["--version"]);
+    if (installedVersion === `xwin ${xwinVersion}`) {
+      return;
+    }
+    fs.rmSync(path.dirname(path.dirname(executablePath)), {
+      recursive: true,
+      force: true,
+    });
   }
   runChecked("cargo", [
     "install",
@@ -128,6 +137,7 @@ function ensureXwin() {
 function ensureWindowsSdk(): string {
   ensureXwin();
   const outputPath = path.join(toolchainDirectory, "sdk");
+  const versionPath = path.join(outputPath, ".versions.json");
   const expectedPaths = Object.values(architectures).map((architecture) =>
     path.join(
       outputPath,
@@ -138,7 +148,15 @@ function ensureWindowsSdk(): string {
       "windowsapp.lib",
     ),
   );
-  if (expectedPaths.every((filePath) => fs.existsSync(filePath))) {
+  const expectedVersions = JSON.stringify({
+    crt: windowsCrtVersion,
+    sdk: windowsSdkVersion,
+  });
+  if (
+    expectedPaths.every((filePath) => fs.existsSync(filePath)) &&
+    fs.existsSync(versionPath) &&
+    fs.readFileSync(versionPath, "utf-8") === expectedVersions
+  ) {
     return outputPath;
   }
   fs.rmSync(outputPath, { recursive: true, force: true });
@@ -146,12 +164,17 @@ function ensureWindowsSdk(): string {
     "--accept-license",
     "--arch",
     "x86,x86_64,aarch64",
+    "--sdk-version",
+    windowsSdkVersion,
+    "--crt-version",
+    windowsCrtVersion,
     "--cache-dir",
     path.join(toolchainDirectory, "xwin-cache"),
     "splat",
     "--output",
     outputPath,
   ]);
+  fs.writeFileSync(versionPath, expectedVersions);
   return outputPath;
 }
 
@@ -227,6 +250,7 @@ function crossCompile(
   ];
   const rustFlags = [
     "-Ctarget-feature=+crt-static",
+    "-Clink-arg=/Brepro",
     "-Clink-arg=/ignore:4099",
     ...libraryDirectories.map((directory) => `-Lnative=${directory}`),
   ];
@@ -246,7 +270,10 @@ function buildOnWindows(
   buildWithCargo(
     target,
     outputPath,
-    cargoEnvironment(target, ["-Ctarget-feature=+crt-static"]),
+    cargoEnvironment(target, [
+      "-Ctarget-feature=+crt-static",
+      "-Clink-arg=/Brepro",
+    ]),
   );
 }
 
