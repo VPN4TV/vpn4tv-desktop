@@ -99,6 +99,7 @@ linux:
   target:
     - deb
     - rpm
+    - pacman
   artifactName: SFL-${version}-${arch}.${ext}
 deb:
   afterInstall: build/linux-after-install.sh
@@ -111,4 +112,26 @@ rpm:
   afterRemove: build/linux-after-remove.sh
   fpm:
     - --before-remove=build/linux-before-remove.sh
+    - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
+pacman:
+  afterInstall: build/linux-after-install-pacman.sh
+  afterRemove: build/linux-after-remove-pacman.sh
+  compression: zstd
+  depends:
+    - c-ares
+    - ffmpeg
+    - gtk3
+    - libevent
+    - libvpx
+    - libxslt
+    - libxss
+    - minizip
+    - nss
+    - re2
+    - snappy
+    - libnotify
+    - libappindicator-gtk3
+  fpm:
+    - --before-remove=build/linux-before-remove-pacman.sh
+    - --after-upgrade=build/linux-after-install-pacman.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service

@@ -1,4 +1,4 @@
-import { Menu, Tray, app, nativeImage } from "electron";
+import { Menu, Tray, app, nativeImage, screen } from "electron";
 import type { MenuItemConstructorOptions, NativeImage, Rectangle } from "electron";
 
 import { ServiceStatus_Type } from "../shared/gen/daemon/started_service_pb";
@@ -11,9 +11,36 @@ import { onProfilesChanged, profilesState, selectProfile, startSelectedProfile }
 import { resourcePath } from "./resources";
 import { daemonState } from "./state";
 import { destroyTrayMenuWindow, prepareTrayMenuWindow, showTrayMenu } from "./trayMenu";
+import { X11Tray } from "./x11Tray";
 
 let tray: Tray | null = null;
+let x11Tray: X11Tray | null = null;
 let openWindow: () => void = () => {};
+
+function usesX11Tray(): boolean {
+  if (process.platform !== "linux") {
+    return false;
+  }
+  const ozonePlatform = app.commandLine.getSwitchValue("ozone-platform");
+  if (ozonePlatform === "x11") {
+    return true;
+  }
+  if (ozonePlatform === "wayland") {
+    return false;
+  }
+  const sessionType = process.env.XDG_SESSION_TYPE?.toLowerCase() ?? "";
+  return (
+    sessionType === "x11" ||
+    (sessionType === "" &&
+      process.env.DISPLAY !== undefined &&
+      process.env.WAYLAND_DISPLAY === undefined)
+  );
+}
+
+function cursorAnchor(): Rectangle {
+  const cursor = screen.getCursorScreenPoint();
+  return { x: cursor.x, y: cursor.y, width: 0, height: 0 };
+}
 
 function translate(key: DesktopMessageKey): string {
   return translateDesktop(desktopLanguageFromLocale(preferredLocale()), key);
@@ -105,9 +132,8 @@ function buildTrayTemplate(): MenuItemConstructorOptions[] {
 }
 
 export function rebuildTrayMenu() {
-  // Setting a native context menu on Windows suppresses the click events used
-  // by our custom tray window, so native menu rebuilding is strictly for the
-  // macOS and Linux implementations.
+  // Electron's Windows context menu suppresses the tray click events used by
+  // the custom menu window.
   if (tray === null || process.platform === "win32") {
     return;
   }
@@ -128,16 +154,7 @@ export function initializeTray(open: () => void) {
   daemonState.start();
 }
 
-export function updateTrayVisibility(enabled: boolean) {
-  if (!enabled) {
-    tray?.destroy();
-    tray = null;
-    destroyTrayMenuWindow();
-    return;
-  }
-  if (tray !== null) {
-    return;
-  }
+function createElectronTray() {
   let icon: NativeImage;
   if (process.platform === "darwin") {
     icon = nativeImage.createFromPath(resourcePath("trayTemplate.png"));
@@ -149,12 +166,6 @@ export function updateTrayVisibility(enabled: boolean) {
   }
   tray = new Tray(icon);
   tray.setToolTip("sing-box");
-  // Windows delivers click and right-click as distinct events only when no
-  // context menu is set — with one set it pops that menu natively instead
-  // (shell/browser/ui/win/notify_icon.cc); both gestures open our own frameless
-  // menu window, so no native menu is set there. macOS opens the context menu
-  // on any click and never emits click once a menu is set
-  // (shell/browser/ui/tray_icon_cocoa.mm), so it keeps the native menu.
   if (process.platform === "win32") {
     prepareTrayMenuWindow(tray.getBounds());
     const popMenu = (bounds: Rectangle) => {
@@ -165,4 +176,45 @@ export function updateTrayVisibility(enabled: boolean) {
     return;
   }
   rebuildTrayMenu();
+}
+
+export function updateTrayVisibility(enabled: boolean) {
+  if (!enabled) {
+    tray?.destroy();
+    tray = null;
+    x11Tray?.destroy();
+    x11Tray = null;
+    destroyTrayMenuWindow();
+    return;
+  }
+  if (tray !== null || x11Tray !== null) {
+    return;
+  }
+  if (!usesX11Tray()) {
+    createElectronTray();
+    return;
+  }
+  prepareTrayMenuWindow(cursorAnchor());
+  let currentTray: X11Tray;
+  try {
+    currentTray = new X11Tray(() => {
+      void showTrayMenu(cursorAnchor());
+    });
+  } catch (error: unknown) {
+    console.error("failed to create X11 tray:", error);
+    destroyTrayMenuWindow();
+    createElectronTray();
+    return;
+  }
+  x11Tray = currentTray;
+  void currentTray.ready.catch((error: unknown) => {
+    if (x11Tray !== currentTray) {
+      return;
+    }
+    console.error("failed to initialize X11 tray:", error);
+    currentTray.destroy();
+    x11Tray = null;
+    destroyTrayMenuWindow();
+    createElectronTray();
+  });
 }
