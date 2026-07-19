@@ -21,6 +21,12 @@ directories:
 files:
   - out/**
   - "!**/*.map"
+electronLanguages:
+  - en-US
+  - zh-CN
+  - zh-TW
+  - fa
+  - ru
 extraResources:
   - from: resources/trayTemplate.png
     to: trayTemplate.png
@@ -42,12 +48,6 @@ win:
   signtoolOptions:
     signingHashAlgorithms:
       - sha256
-  electronLanguages:
-    - en-US
-    - zh-CN
-    - zh-TW
-    - fa
-    - ru
   extraResources:
     - from: resources/tray.ico
       to: tray.ico
