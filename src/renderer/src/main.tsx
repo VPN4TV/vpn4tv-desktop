@@ -33,10 +33,29 @@ function legacyColor(computed: string): string {
   return `rgb(${red}, ${green}, ${blue})`;
 }
 
-function watchTitleBarOverlayTheme() {
+interface WindowControlsOverlay {
+  getTitlebarAreaRect(): DOMRect;
+  addEventListener(type: "geometrychange", listener: () => void): void;
+}
+
+function watchTitleBarOverlay() {
   if (window.desktop.platform === "darwin") {
     return;
   }
+  const controlsOverlay = (
+    navigator as Navigator & { windowControlsOverlay?: WindowControlsOverlay }
+  ).windowControlsOverlay;
+  const reportGeometry = () => {
+    if (controlsOverlay === undefined) {
+      return;
+    }
+    const titlebarArea = controlsOverlay.getTitlebarAreaRect();
+    const controlsWidth = Math.max(0, window.innerWidth - titlebarArea.width);
+    document.documentElement.style.setProperty("--window-controls-width", `${controlsWidth}px`);
+  };
+  controlsOverlay?.addEventListener("geometrychange", reportGeometry);
+  reportGeometry();
+
   let lastColor = "";
   let lastSymbolColor = "";
   const report = () => {
@@ -69,7 +88,7 @@ function watchTitleBarOverlayTheme() {
   report();
 }
 
-watchTitleBarOverlayTheme();
+watchTitleBarOverlay();
 
 const desktop = createDesktopHost();
 configurePreferenceStorage(desktop.preferences);
