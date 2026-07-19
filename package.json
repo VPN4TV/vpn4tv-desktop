@@ -1,8 +1,18 @@
 {
-  "name": "sing-box-for-desktop",
+  "name": "sing-box",
+  "desktopName": "sing-box.desktop",
   "private": true,
-  "description": "sing-box",
+  "description": "Windows and Linux client for sing-box, the universal proxy platform.",
   "homepage": "https://github.com/sagernet/sing-box-for-desktop",
+  "license": "GPL-3.0-or-later",
+  "author": {
+    "name": "SagerNet",
+    "email": "contact-sagernet@sekai.icu"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SagerNet/sing-box-for-desktop.git"
+  },
   "type": "module",
   "packageManager": "pnpm@11.13.0",
   "main": "./out/main/index.js",

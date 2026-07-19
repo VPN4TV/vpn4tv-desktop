@@ -1,4 +1,5 @@
 productName: sing-box
+copyright: nekohasekai
 publish: null
 afterPack: scripts/afterPack.cjs
 afterSign: scripts/afterSign.cjs
@@ -78,11 +79,13 @@ nsis:
   artifactName: SFW-${version}-${env.SFW_ARCHITECTURE}.${ext}
 linux:
   appId: io.nekohasekai.sfl
+  syncDesktopName: true
   executableName: sing-box
   icon: resources/icons
   synopsis: The universal proxy platform
   category: Network
   maintainer: 世界 <i@sekai.icu>
+  vendor: SagerNet
   protocols:
     - name: sing-box
       schemes:
@@ -103,6 +106,7 @@ linux:
     - pacman
   artifactName: SFL-${version}-${arch}.${ext}
 deb:
+  packageCategory: net
   afterInstall: build/linux-after-install.sh
   afterRemove: build/linux-after-remove.sh
   fpm:
@@ -110,7 +114,9 @@ deb:
     - --before-remove=build/linux-before-remove.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
+    - build/io.nekohasekai.sfl.metainfo.xml=/usr/share/metainfo/io.nekohasekai.sfl.metainfo.xml
 rpm:
+  packageCategory: Applications/Internet
   afterInstall: build/linux-after-install.sh
   afterRemove: build/linux-after-remove.sh
   fpm:
@@ -118,7 +124,10 @@ rpm:
     - --before-remove=build/linux-before-remove.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
+    - build/io.nekohasekai.sfl.metainfo.xml=/usr/share/metainfo/io.nekohasekai.sfl.metainfo.xml
 pacman:
+  artifactName: SFL-${version}-${arch}.pkg.tar.zst
+  packageCategory: network
   afterInstall: build/linux-after-install-pacman.sh
   afterRemove: build/linux-after-remove-pacman.sh
   compression: zstd
@@ -138,7 +147,9 @@ pacman:
     - libappindicator-gtk3
     - polkit
   fpm:
+    - --description=Linux client for sing-box, The universal proxy platform
     - --before-remove=build/linux-before-remove-pacman.sh
     - --after-upgrade=build/linux-after-install-pacman.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
+    - build/io.nekohasekai.sfl.metainfo.xml=/usr/share/metainfo/io.nekohasekai.sfl.metainfo.xml
