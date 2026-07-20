@@ -94,11 +94,16 @@ async function authenticate(
       }
     };
     const captureCookies = async (url: string) => {
-      if (settled || request.finalURL === "" || url !== request.finalURL) return;
+      if (
+        settled ||
+        request.cookieNames.length === 0 ||
+        (request.finalURL !== "" && url !== request.finalURL)
+      )
+        return;
       const cookies = (await browserSession.cookies.get({ url }))
         .filter((cookie) => request.cookieNames.includes(cookie.name))
         .map((cookie) => ({ name: cookie.name, value: cookie.value }));
-      if (request.cookieNames.length > 0 && cookies.length === 0) return;
+      if (cookies.length === 0) return;
       finish({ finalURL: url, cookies, headers: [] });
     };
     const attachContents = (contents: WebContents) => {
