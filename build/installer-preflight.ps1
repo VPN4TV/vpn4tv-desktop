@@ -683,7 +683,7 @@ try {
         $unsafeWorkingAncestor = Get-UnsafeInstallationAncestor $workingAncestorPaths
         if ($AllowUnsafeInstallationDirectory -and
             $null -ne $unsafeWorkingAncestor -and
-            $unsafeWorkingAncestor.ExitCode -eq 13) {
+            $unsafeWorkingAncestor.ExitCode -in @(12, 13)) {
             $unsafeWorkingAncestor = $null
         } elseif ($RepairPathAncestors -and
             $null -ne $unsafeWorkingAncestor -and
@@ -724,7 +724,7 @@ try {
                 $applicationDataAncestorPaths
             if ($AllowUnsafeInstallationDirectory -and
                 $null -ne $unsafeApplicationDataAncestor -and
-                $unsafeApplicationDataAncestor.ExitCode -eq 13) {
+                $unsafeApplicationDataAncestor.ExitCode -in @(12, 13)) {
                 $unsafeApplicationDataAncestor = $null
             } elseif ($RepairPathAncestors -and
                 $null -ne $unsafeApplicationDataAncestor -and
