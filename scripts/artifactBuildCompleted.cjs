@@ -119,6 +119,8 @@ function normalizePacmanPackage(packagePath, sourceDateEpoch) {
       "bsdtar",
       [
         "--zstd",
+        "--options",
+        "zstd:compression-level=19",
         "-cf",
         outputPath,
         "--uid",

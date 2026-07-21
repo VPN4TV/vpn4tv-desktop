@@ -110,8 +110,10 @@ deb:
   packageCategory: net
   afterInstall: build/linux-after-install.sh
   afterRemove: build/linux-after-remove.sh
+  compression: xz
   fpm:
     - --depends=pkexec
+    - --deb-compression-level=9
     - --before-remove=build/linux-before-remove.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
@@ -120,8 +122,10 @@ rpm:
   packageCategory: Applications/Internet
   afterInstall: build/linux-after-install.sh
   afterRemove: build/linux-after-remove.sh
+  compression: xzmt
   fpm:
     - --depends=polkit
+    - --rpm-compression-level=9
     - --rpm-rpmbuild-define=_buildhost reproducible
     - --rpm-rpmbuild-define=use_source_date_epoch_as_buildtime 1
     - --rpm-rpmbuild-define=clamp_mtime_to_source_date_epoch 1
