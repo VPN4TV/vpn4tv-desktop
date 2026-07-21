@@ -24,9 +24,12 @@ const signingConfigurationPath = path.join(
   repositoryRoot,
   "signing.local.json",
 );
-const packageMode = process.argv[2] ?? "win";
-const developmentPackage =
-  packageMode === "win-dev" || packageMode === "win-dev-architecture";
+const developmentPackage = process.argv[2] === "dev";
+const packageModeArgumentIndex = developmentPackage ? 3 : 2;
+const packageMode = process.argv[packageModeArgumentIndex] ?? "win";
+const packageArguments = process.argv
+  .slice(packageModeArgumentIndex + 1)
+  .filter((argument) => argument !== "--");
 
 const sourceDateEpoch = configureReproducibleBuild([
   repositoryRoot,
@@ -189,15 +192,11 @@ function stageWindowsCronetLibrary(
   builderArchitecture: string,
 ) {
   const modulePath = `github.com/sagernet/cronet-go/lib/windows_${goArchitecture}`;
-  const result = spawnSync(
-    "go",
-    ["list", "-m", "-f", "{{.Dir}}", modulePath],
-    {
-      cwd: singBoxDirectory,
-      encoding: "utf-8",
-      env: goEnvironment(),
-    },
-  );
+  const result = spawnSync("go", ["list", "-m", "-f", "{{.Dir}}", modulePath], {
+    cwd: singBoxDirectory,
+    encoding: "utf-8",
+    env: goEnvironment(),
+  });
   if (result.error) {
     throw new Error(`go: ${result.error.message}`);
   }
@@ -385,9 +384,7 @@ async function packageWindowsArchitecture(artifactArchitecture: string) {
 }
 
 async function packageWindows() {
-  const requestedArchitectures = new Set(
-    process.argv.slice(3).filter((argument) => argument !== "--"),
-  );
+  const requestedArchitectures = new Set(packageArguments);
   const supportedArchitectures = new Set<string>(
     windowsArchitectures.map(
       (architecture) => architecture.artifactArchitecture,
@@ -482,7 +479,8 @@ async function packageWindows() {
         "tsx",
         [
           "scripts/package.ts",
-          developmentPackage ? "win-dev-architecture" : "win-architecture",
+          ...(developmentPackage ? ["dev"] : []),
+          "win-architecture",
           architecture.artifactArchitecture,
         ],
         buildEnvironment,
@@ -521,14 +519,9 @@ async function packageLinux() {
   const requestedArchitectures = new Set<string>();
   const requestedTargets: string[] = [];
   const supportedArchitectures = new Set<string>(
-    linuxArchitectures.map(
-      (architecture) => architecture.artifactArchitecture,
-    ),
+    linuxArchitectures.map((architecture) => architecture.artifactArchitecture),
   );
-  for (const argument of process.argv.slice(3)) {
-    if (argument === "--") {
-      continue;
-    }
+  for (const argument of packageArguments) {
     if (supportedArchitectures.has(argument)) {
       requestedArchitectures.add(argument);
     } else if (linuxTargets.has(argument)) {
@@ -556,6 +549,13 @@ async function packageLinux() {
       "--config",
       "electron-builder.yml",
       `--config.extraMetadata.version=${readApplicationVersion()}`,
+      ...(developmentPackage
+        ? [
+            "--config.compression=store",
+            "--config.linux.artifactName=SFL-${version}-${arch}-dev.${ext}",
+            "--config.pacman.artifactName=SFL-${version}-${arch}-dev.pkg.tar.zst",
+          ]
+        : []),
       "--publish",
       "never",
     ];
@@ -566,24 +566,15 @@ async function packageLinux() {
 async function main(): Promise<void> {
   console.info(`[package] SOURCE_DATE_EPOCH=${sourceDateEpoch}`);
   verifyGoVersion();
-  if (
-    packageMode !== "win-architecture" &&
-    packageMode !== "win-dev-architecture"
-  ) {
+  if (packageMode !== "win-architecture") {
     ensureGenerated();
   }
   switch (packageMode) {
     case "win":
       await packageWindows();
       break;
-    case "win-dev":
-      await packageWindows();
-      break;
-    case "win-dev-architecture":
-      await packageWindowsArchitecture(process.argv[3] ?? "");
-      break;
     case "win-architecture":
-      await packageWindowsArchitecture(process.argv[3] ?? "");
+      await packageWindowsArchitecture(packageArguments[0] ?? "");
       break;
     case "linux":
       await packageLinux();
