@@ -853,6 +853,9 @@ FunctionEnd
   Page custom showInstallationActionPage leaveInstallationActionPage
 
   Function showInstallationActionPage
+    ${if} ${isUpdated}
+      Abort
+    ${endif}
     Call restoreInstallerNavigation
     GetDlgItem $0 $HWNDPARENT 3
     ShowWindow $0 ${SW_HIDE}
@@ -1730,6 +1733,11 @@ FunctionEnd
   FunctionEnd
 
   Function showDesktopShortcutFinishOption
+    ${if} ${isUpdated}
+    ${andif} ${isForceRun}
+      Call StartApp
+      !insertmacro quitSuccess
+    ${endif}
     StrCpy $0 0
     ${if} ${FileExists} "$newDesktopLink"
     ${orif} ${FileExists} "$oldDesktopLink"
