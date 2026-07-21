@@ -372,7 +372,7 @@ function launchUpdateInstallerElevated(installerPath: string): Promise<boolean> 
   const script = [
     "$ErrorActionPreference = 'Stop'",
     "try {",
-    `Start-Process -FilePath ${quotedInstallerPath} -ArgumentList '--updated','/S','--force-run' -Verb RunAs`,
+    `Start-Process -FilePath ${quotedInstallerPath} -ArgumentList '--updated','--force-run' -Verb RunAs`,
     "exit 0",
     "} catch {",
     "if ($_.Exception.InnerException -is [System.ComponentModel.Win32Exception] -and $_.Exception.InnerException.NativeErrorCode -eq 1223) {",

@@ -65,6 +65,11 @@ export const TERMINAL_CLIPBOARD_READ = "terminal:clipboard-read";
 export const TERMINAL_CLIPBOARD_WRITE = "terminal:clipboard-write";
 export const TERMINAL_CONTEXT_MENU = "terminal:context-menu";
 
+export const PROFILE_EDITOR_WINDOW_OPEN = "profile-editor:window-open";
+export const PROFILE_EDITOR_WINDOW_CLOSE = "profile-editor:window-close";
+export const PROFILE_EDITOR_WINDOW_DIRTY = "profile-editor:window-dirty";
+export const PROFILE_EDITOR_WINDOW_CLOSE_REQUESTED = "profile-editor:window-close-requested";
+
 export type TerminalContextMenuResult =
   | { action: "copy" }
   | { action: "paste"; text: string }
@@ -76,6 +81,13 @@ export interface TerminalBridge {
   readClipboardText(): Promise<string>;
   writeClipboardText(text: string): Promise<void>;
   openContextMenu(selectionText: string): Promise<TerminalContextMenuResult>;
+}
+
+export interface ProfileEditorBridge {
+  openWindow(profileId: string, readOnly: boolean): Promise<void>;
+  closeWindow(): void;
+  setDirty(dirty: boolean): void;
+  onCloseRequested(listener: () => void): () => void;
 }
 
 export const OPENCONNECT_BROWSER_AUTHENTICATE = "openconnect-browser:authenticate";
@@ -363,6 +375,7 @@ export interface DesktopBridge {
   servers: ServersBridge;
   preferences: PreferencesBridge;
   terminal: TerminalBridge;
+  profileEditor: ProfileEditorBridge;
   openConnectBrowser: OpenConnectBrowserBridge;
   settings: SettingsBridge;
   updates: UpdatesBridge;

@@ -90,6 +90,14 @@ export function createDesktopHost(): DesktopHost {
       writeClipboardText: (text) => bridge.terminal.writeClipboardText(text),
       openContextMenu: (selectionText) => bridge.terminal.openContextMenu(selectionText),
     },
+    profileEditor: {
+      openWindow: (profileId, readOnly) => {
+        void bridge.profileEditor.openWindow(profileId, readOnly).catch(showError);
+      },
+      closeWindow: () => bridge.profileEditor.closeWindow(),
+      setDirty: (dirty) => bridge.profileEditor.setDirty(dirty),
+      onCloseRequested: (listener) => bridge.profileEditor.onCloseRequested(listener),
+    },
     openConnectBrowser: {
       authenticate: (request) => bridge.openConnectBrowser.authenticate(request),
     },

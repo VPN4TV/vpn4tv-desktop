@@ -19,6 +19,10 @@ import {
   PREFERENCES_CALL,
   PREFERENCES_CHANGED,
   PREFERENCES_SNAPSHOT,
+  PROFILE_EDITOR_WINDOW_CLOSE,
+  PROFILE_EDITOR_WINDOW_CLOSE_REQUESTED,
+  PROFILE_EDITOR_WINDOW_DIRTY,
+  PROFILE_EDITOR_WINDOW_OPEN,
   PROFILE_FILE_IMPORT,
   PROFILES_CALL,
   PROFILES_CHANGED,
@@ -206,6 +210,23 @@ const bridge: DesktopBridge = {
     writeClipboardText: (text) => ipcRenderer.invoke(TERMINAL_CLIPBOARD_WRITE, text),
     openContextMenu: (selectionText) =>
       ipcRenderer.invoke(TERMINAL_CONTEXT_MENU, selectionText),
+  },
+  profileEditor: {
+    openWindow: (profileId, readOnly) =>
+      ipcRenderer.invoke(PROFILE_EDITOR_WINDOW_OPEN, profileId, readOnly),
+    closeWindow: () => {
+      ipcRenderer.send(PROFILE_EDITOR_WINDOW_CLOSE);
+    },
+    setDirty: (dirty) => {
+      ipcRenderer.send(PROFILE_EDITOR_WINDOW_DIRTY, dirty);
+    },
+    onCloseRequested: (listener) => {
+      const handler = () => listener();
+      ipcRenderer.on(PROFILE_EDITOR_WINDOW_CLOSE_REQUESTED, handler);
+      return () => {
+        ipcRenderer.removeListener(PROFILE_EDITOR_WINDOW_CLOSE_REQUESTED, handler);
+      };
+    },
   },
   openConnectBrowser: {
     authenticate: (request) => ipcRenderer.invoke(OPENCONNECT_BROWSER_AUTHENTICATE, request),

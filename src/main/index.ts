@@ -24,6 +24,7 @@ import { developmentRendererURL, developmentSwitchValue, hardenPackagedRuntime }
 import { hasLoginItemArgument, migrateLoginItem, wasOpenedAtLogin } from "./loginItem";
 import { registerPreferences } from "./preferences";
 import { registerOpenConnectBrowser } from "./openConnectBrowser";
+import { registerProfileEditorWindows } from "./profileEditorWindows";
 import { registerProfiles } from "./profiles";
 import { registerSetup } from "./repair";
 import { registerReports } from "./reports";
@@ -174,6 +175,7 @@ function createWindow(): BrowserWindow {
 
 let mainWindow: BrowserWindow | null = null;
 let terminalWindows: Set<BrowserWindow> | null = null;
+let profileEditorWindows: Set<BrowserWindow> | null = null;
 let quitting = false;
 
 function maybeQuitAfterWindowClosed() {
@@ -181,6 +183,7 @@ function maybeQuitAfterWindowClosed() {
     !quitting &&
     mainWindow === null &&
     !terminalWindows?.size &&
+    !profileEditorWindows?.size &&
     !trayInBackground()
   ) {
     app.quit();
@@ -361,13 +364,19 @@ if (!singleInstanceLock) {
     settingsDatabase();
     archiveNativeCrashDumps();
     terminalWindows = registerTerminalWindows(maybeQuitAfterWindowClosed);
+    profileEditorWindows = registerProfileEditorWindows(maybeQuitAfterWindowClosed);
     registerApplication(showWindow);
     ipcMain.on(APP_TITLE_BAR_OVERLAY, (event, colors: TitleBarOverlayColors) => {
       if (process.platform === "darwin") {
         return;
       }
       const window = BrowserWindow.fromWebContents(event.sender);
-      if (window !== null && (window === mainWindow || terminalWindows?.has(window) === true)) {
+      if (
+        window !== null &&
+        (window === mainWindow ||
+          terminalWindows?.has(window) === true ||
+          profileEditorWindows?.has(window) === true)
+      ) {
         applyTitleBarOverlayColors(window, colors);
       }
     });
