@@ -111,7 +111,7 @@ deb:
   afterInstall: build/linux-after-install.sh
   afterRemove: build/linux-after-remove.sh
   fpm:
-    - --depends=policykit-1
+    - --depends=pkexec
     - --before-remove=build/linux-before-remove.sh
     - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
