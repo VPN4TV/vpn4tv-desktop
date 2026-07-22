@@ -20,7 +20,7 @@ import { registerApplication } from "./application";
 import { registerDaemonBridge } from "./bridge";
 import { registerCore } from "./core";
 import { settingsDatabase } from "./database";
-import { developmentRendererURL, developmentSwitchValue, hardenPackagedRuntime } from "./development";
+import { developmentRendererURL, developmentSwitchValue } from "./development";
 import { hasLoginItemArgument, migrateLoginItem, wasOpenedAtLogin } from "./loginItem";
 import { registerPreferences } from "./preferences";
 import { registerOpenConnectBrowser } from "./openConnectBrowser";
@@ -76,7 +76,6 @@ function handleFatal(kind: string, error: unknown): never {
 }
 process.on("uncaughtException", (error) => handleFatal("uncaughtException", error));
 process.on("unhandledRejection", (reason) => handleFatal("unhandledRejection", reason));
-hardenPackagedRuntime();
 
 configureApplicationPaths(developmentSwitchValue("user-data"));
 
