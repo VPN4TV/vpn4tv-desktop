@@ -91,12 +91,15 @@ export interface ProfileEditorBridge {
 }
 
 export const OPENCONNECT_BROWSER_AUTHENTICATE = "openconnect-browser:authenticate";
+export const OPENCONNECT_BROWSER_CANCEL = "openconnect-browser:cancel";
 
 export interface OpenConnectBrowserRequest {
   url: string;
   finalURL: string;
   cookieNames: string[];
+  earlyCookieNames: string[];
   headerNames: string[];
+  callbackURLPrefixes: string[];
 }
 
 export interface OpenConnectBrowserResult {
@@ -106,7 +109,12 @@ export interface OpenConnectBrowserResult {
 }
 
 export interface OpenConnectBrowserBridge {
-  authenticate(request: OpenConnectBrowserRequest): Promise<OpenConnectBrowserResult | null>;
+  authenticate(
+    browserSessionID: string,
+    storageID: string,
+    request: OpenConnectBrowserRequest,
+  ): Promise<OpenConnectBrowserResult | null>;
+  cancel(browserSessionID: string): void;
 }
 
 export type ProfilesResult = { ok: true; value: unknown } | { ok: false; error: string };

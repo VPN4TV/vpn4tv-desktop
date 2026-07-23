@@ -16,6 +16,7 @@ import {
   DAEMON_UNARY,
   DEEP_LINK_IMPORT,
   OPENCONNECT_BROWSER_AUTHENTICATE,
+  OPENCONNECT_BROWSER_CANCEL,
   PREFERENCES_CALL,
   PREFERENCES_CHANGED,
   PREFERENCES_SNAPSHOT,
@@ -229,7 +230,9 @@ const bridge: DesktopBridge = {
     },
   },
   openConnectBrowser: {
-    authenticate: (request) => ipcRenderer.invoke(OPENCONNECT_BROWSER_AUTHENTICATE, request),
+    authenticate: (browserSessionID, storageID, request) =>
+      ipcRenderer.invoke(OPENCONNECT_BROWSER_AUTHENTICATE, browserSessionID, storageID, request),
+    cancel: (browserSessionID) => ipcRenderer.send(OPENCONNECT_BROWSER_CANCEL, browserSessionID),
   },
   settings: {
     get: () => callSettings("get"),

@@ -99,7 +99,9 @@ export function createDesktopHost(): DesktopHost {
       onCloseRequested: (listener) => bridge.profileEditor.onCloseRequested(listener),
     },
     openConnectBrowser: {
-      authenticate: (request) => bridge.openConnectBrowser.authenticate(request),
+      authenticate: (browserSessionID, storageID, request) =>
+        bridge.openConnectBrowser.authenticate(browserSessionID, storageID, request),
+      cancel: (browserSessionID) => bridge.openConnectBrowser.cancel(browserSessionID),
     },
     setup: {
       repairInstall: () => bridge.setup.repairInstall(),
