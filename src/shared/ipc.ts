@@ -160,6 +160,8 @@ export interface ProfilesBridge {
   list(): Promise<ProfilesState>;
   /** VPN4TV: expiry / traffic captured from the subscription headers. */
   vpn4tvSubscriptionInfo(id: string): Promise<VPN4TVSubscriptionInfo | null>;
+  /** VPN4TV: stable per-install id, shown in About for support. */
+  vpn4tvDeviceId(): Promise<string>;
   create(init: ProfileCreate): Promise<ProfileMetadata>;
   updateMetadata(id: string, patch: ProfileMetadataPatch): Promise<void>;
   remove(id: string): Promise<void>;

@@ -189,6 +189,7 @@ export function createDesktopHost(): DesktopHost {
     },
     profiles: {
       vpn4tvSubscriptionInfo: (id) => bridge.profiles.vpn4tvSubscriptionInfo(id),
+      vpn4tvDeviceId: () => bridge.profiles.vpn4tvDeviceId(),
       list: () => bridge.profiles.list(),
       onChanged: (listener) => bridge.profiles.onChanged(listener),
       create: async (init) => {

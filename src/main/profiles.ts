@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 
 import {
   convertSubscription,
+  hwid,
   forgetSubscriptionInfo,
   rememberSubscriptionInfo,
   subscriptionHeaders,
@@ -495,6 +496,11 @@ const handlers: Record<
 > = {
   async list(): Promise<ProfilesState> {
     return profilesState();
+  },
+
+  // VPN4TV: the per-install id support asks users for.
+  async vpn4tvDeviceId(): Promise<string> {
+    return hwid();
   },
 
   // VPN4TV: expiry / traffic captured from the subscription headers.
