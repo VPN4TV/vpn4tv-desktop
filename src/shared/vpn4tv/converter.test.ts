@@ -1,0 +1,233 @@
+// VPN4TV converter tests. Run with:  node --test out-test/**/*.test.js
+// (see scripts/test-converter.sh — the repo's Node/pnpm toolchain is not needed).
+
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { deflateSync } from "node:zlib";
+
+import { BRIDGE_CONFIG_KEY, BRIDGE_PORTS, NoProxiesError, generateConfig } from "./generator";
+import { parseSubscription, resetLastDns } from "./parser";
+
+function parseGenerated(proxies: Parameters<typeof generateConfig>[0]): Record<string, any> {
+  return JSON.parse(generateConfig(proxies));
+}
+
+test("vless reality URI becomes a native sing-box outbound", () => {
+  const uri =
+    "vless://11111111-2222-3333-4444-555555555555@example.com:443" +
+    "?security=reality&sni=www.apple.com&fp=chrome&pbk=PUBKEY&sid=ab12&flow=xtls-rprx-vision&type=tcp#Server%20A";
+  const [proxy] = parseSubscription(uri);
+  assert.equal(proxy.tag, "Server A");
+  assert.equal(proxy.server, "example.com");
+  assert.equal(proxy.serverPort, 443);
+  assert.equal(proxy.outbound.type, "vless");
+  assert.equal(proxy.outbound.flow, "xtls-rprx-vision");
+  const tls = proxy.outbound.tls as Record<string, any>;
+  assert.equal(tls.server_name, "www.apple.com");
+  assert.equal(tls.reality.public_key, "PUBKEY");
+  assert.equal(tls.utls.fingerprint, "chrome");
+  assert.equal(proxy.xrayOutbound, undefined, "reality/tcp must not need the xray bridge");
+});
+
+test("vless xhttp goes through the xray bridge", () => {
+  const uri =
+    "vless://11111111-2222-3333-4444-555555555555@example.com:8443" +
+    "?security=tls&sni=cdn.example.com&type=xhttp&path=%2Fdl&mode=packet-up#XH";
+  const [proxy] = parseSubscription(uri);
+  assert.ok(proxy.xrayOutbound, "xhttp is not a native sing-box transport");
+  const stream = proxy.xrayOutbound!.streamSettings as Record<string, any>;
+  assert.equal(stream.network, "xhttp");
+  assert.equal(stream.xhttpSettings.path, "/dl");
+  assert.equal(stream.xhttpSettings.mode, "packet-up");
+
+  const config = parseGenerated([proxy]);
+  const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "XH");
+  assert.equal(outbound.type, "socks", "the bridge is reached over loopback socks");
+  assert.equal(outbound.server, BRIDGE_PORTS.socksHost);
+  assert.equal(outbound.server_port, BRIDGE_PORTS.base);
+  assert.ok(config[BRIDGE_CONFIG_KEY].xray, "bridge config must travel with the profile");
+  assert.equal(config[BRIDGE_CONFIG_KEY].xray.inbounds[0].port, BRIDGE_PORTS.base);
+});
+
+test("shadowsocks: plain is native, prefixed goes to the outline bridge", () => {
+  const userInfo = Buffer.from("aes-256-gcm:secret", "utf8").toString("base64");
+  const [plain] = parseSubscription(`ss://${userInfo}@1.2.3.4:8388#Plain`);
+  assert.equal(plain.outbound.type, "shadowsocks");
+  assert.equal(plain.outbound.method, "aes-256-gcm");
+  assert.equal(plain.outlineUrl, undefined);
+
+  const [outline] = parseSubscription(`ss://${userInfo}@1.2.3.4:8388?prefix=%16%03%01#Outline`);
+  assert.ok(outline.outlineUrl, "a SIP002 prefix requires the outline bridge");
+  const config = parseGenerated([outline]);
+  const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "Outline");
+  assert.equal(outbound.server_port, BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset);
+  assert.equal(
+    config[BRIDGE_CONFIG_KEY].outline.endpoints[0].port,
+    BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset,
+  );
+});
+
+test("vmess base64 payload", () => {
+  const payload = Buffer.from(
+    JSON.stringify({
+      v: "2",
+      ps: "VM",
+      add: "vm.example.com",
+      port: "443",
+      id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      aid: "0",
+      net: "ws",
+      path: "/ws",
+      host: "vm.example.com",
+      tls: "tls",
+    }),
+    "utf8",
+  ).toString("base64");
+  const [proxy] = parseSubscription(`vmess://${payload}`);
+  assert.equal(proxy.tag, "VM");
+  assert.equal(proxy.outbound.type, "vmess");
+  assert.equal((proxy.outbound.transport as any).type, "ws");
+  assert.equal((proxy.outbound.transport as any).path, "/ws");
+  assert.equal((proxy.outbound.tls as any).server_name, "vm.example.com");
+});
+
+test("hysteria2 and trojan", () => {
+  const [hy] = parseSubscription("hy2://pass@h2.example.com:443?sni=h2.example.com&obfs=salamander&obfs-password=x#H2");
+  assert.equal(hy.outbound.type, "hysteria2");
+  assert.equal((hy.outbound.obfs as any).type, "salamander");
+
+  const [trojan] = parseSubscription("trojan://pw@tj.example.com:443?sni=tj.example.com&type=ws&path=/t#TJ");
+  assert.equal(trojan.outbound.type, "trojan");
+  assert.equal((trojan.outbound.transport as any).path, "/t");
+});
+
+test("wg:// URI becomes an AmneziaWG INI on the wireproxy bridge", () => {
+  const uri =
+    "wg://wg.example.com:51820?private_key=PRIV&peer_public_key=PUB&local_address=10.8.0.2%2F32" +
+    "&awg_jc=4&fake_packets=10-50&fake_packets_size=20-80#WG";
+  const [proxy] = parseSubscription(uri);
+  assert.ok(proxy.awgIni);
+  assert.match(proxy.awgIni!, /PrivateKey = PRIV/);
+  assert.match(proxy.awgIni!, /Jc = 4/);
+  assert.match(proxy.awgIni!, /Jmin = 10/);
+  assert.match(proxy.awgIni!, /Endpoint = wg\.example\.com:51820/);
+
+  const config = parseGenerated([proxy]);
+  const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "WG");
+  assert.equal(outbound.server_port, BRIDGE_PORTS.base + BRIDGE_PORTS.wireguardOffset);
+  assert.equal(outbound.domain_strategy, "ipv4_only");
+  assert.ok(config[BRIDGE_CONFIG_KEY].wireproxy.endpoints[0].ini.includes("PrivateKey"));
+  assert.equal(config.dns.strategy, "ipv4_only", "an all-TCP-bridged profile resolves v4 only");
+});
+
+test("base64-wrapped subscription with several lines", () => {
+  const userInfo = Buffer.from("aes-256-gcm:secret", "utf8").toString("base64");
+  const lines = [
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&sni=a#A",
+    `ss://${userInfo}@1.2.3.4:8388#B`,
+  ].join("\n");
+  const proxies = parseSubscription(Buffer.from(lines, "utf8").toString("base64"));
+  assert.equal(proxies.length, 2);
+  assert.deepEqual(
+    proxies.map((proxy) => proxy.tag),
+    ["A", "B"],
+  );
+});
+
+test("native sing-box config passes through untouched", () => {
+  const singbox = {
+    inbounds: [{ type: "tun", tag: "tun-in" }],
+    outbounds: [{ type: "direct", tag: "direct" }],
+  };
+  const proxies = parseSubscription(JSON.stringify(singbox));
+  assert.equal(proxies.length, 1);
+  assert.deepEqual(JSON.parse(generateConfig(proxies)), singbox);
+});
+
+test("xray JSON subscription: native transports inline, DNS captured", () => {
+  resetLastDns();
+  const xray = {
+    dns: { servers: ["https+local://dns.google/dns-query", "1.0.0.1"] },
+    outbounds: [
+      {
+        tag: "X1",
+        protocol: "vless",
+        settings: { vnext: [{ address: "x.example.com", port: 443, users: [{ id: "uuid-1", flow: "" }] }] },
+        streamSettings: {
+          network: "ws",
+          security: "tls",
+          tlsSettings: { serverName: "x.example.com", fingerprint: "chrome" },
+          wsSettings: { path: "/ws", headers: { Host: "x.example.com" } },
+        },
+      },
+    ],
+  };
+  const proxies = parseSubscription(JSON.stringify(xray));
+  assert.equal(proxies.length, 1);
+  assert.equal(proxies[0].outbound.type, "vless");
+  assert.equal((proxies[0].outbound.transport as any).path, "/ws");
+
+  const config = parseGenerated(proxies);
+  const dnsServers = config.dns.servers as any[];
+  assert.equal(dnsServers[0].server, "dns.google", "remote DNS from the subscription");
+  assert.equal(dnsServers[1].server, "1.0.0.1", "direct DNS from the subscription");
+});
+
+test("AmneziaVPN vpn:// payload (zlib) yields the embedded wg config", () => {
+  const inner = {
+    description: "Amnezia RU",
+    dns1: "9.9.9.9",
+    dns2: "149.112.112.112",
+    containers: [
+      {
+        awg: {
+          last_config: JSON.stringify({
+            config:
+              "[Interface]\nPrivateKey = PRIV\nAddress = 10.8.1.2/32\nDNS = $PRIMARY_DNS, $SECONDARY_DNS\n\n[Peer]\nPublicKey = PUB\nAllowedIPs = 0.0.0.0/0\nEndpoint = amnezia.example.com:35000\n",
+          }),
+        },
+      },
+    ],
+  };
+  const compressed = deflateSync(Buffer.from(JSON.stringify(inner), "utf8"));
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(Buffer.byteLength(JSON.stringify(inner)), 0);
+  const payload = Buffer.concat([length, compressed]).toString("base64url");
+
+  const proxies = parseSubscription(`vpn://${payload}`);
+  assert.equal(proxies.length, 1);
+  assert.equal(proxies[0].tag, "Amnezia RU");
+  assert.match(proxies[0].awgIni!, /Endpoint = amnezia\.example\.com:35000/);
+  assert.match(proxies[0].awgIni!, /DNS = 9\.9\.9\.9, 149\.112\.112\.112/, "DNS placeholders are substituted");
+});
+
+test("duplicate tags are made unique", () => {
+  const uri = (name: string) =>
+    `vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&sni=a#${name}`;
+  const proxies = parseSubscription([uri("Same"), uri("Same"), uri("Same")].join("\n"));
+  const config = parseGenerated(proxies);
+  const tags = (config.outbounds as any[])
+    .filter((entry) => entry.type === "vless")
+    .map((entry) => entry.tag);
+  assert.deepEqual(tags, ["Same", "Same_2", "Same_3"]);
+});
+
+test("generated profile shape: selector, urltest, route and fakeip", () => {
+  const [proxy] = parseSubscription(
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&sni=a#A",
+  );
+  const config = parseGenerated([proxy]);
+  const outbounds = config.outbounds as any[];
+  assert.equal(outbounds[0].type, "urltest");
+  assert.equal(outbounds[1].type, "selector");
+  assert.deepEqual(outbounds[1].outbounds, ["auto", "A"]);
+  assert.equal(config.route.final, "select");
+  assert.deepEqual(config.route.default_domain_resolver, { server: "dns-direct" });
+  assert.equal(config.experimental.cache_file.store_fakeip, true);
+  assert.equal(config[BRIDGE_CONFIG_KEY], undefined, "no bridges → no private key in the profile");
+});
+
+test("empty input is rejected", () => {
+  assert.throws(() => generateConfig([]), NoProxiesError);
+  assert.deepEqual(parseSubscription("   \n # comment\n"), []);
+});
