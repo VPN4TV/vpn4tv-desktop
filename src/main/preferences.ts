@@ -7,6 +7,7 @@ import {
 } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
 import { DESKTOP_LANGUAGES } from "../shared/translations";
+import { regenerateRemoteProfiles } from "./profiles";
 import {
   parseBooleanPreference,
   preferenceSnapshot,
@@ -107,6 +108,8 @@ const rendererPreferences: Record<string, PreferenceParser> = {
   "disable-deprecated-warnings": parseBooleanPreference,
   // VPN4TV: connect as soon as the app starts (parity with the mobile clients).
   "vpn4tv-auto-connect": parseBooleanPreference,
+  // VPN4TV: FakeDNS (DNS-block bypass) — regenerating profiles picks this up.
+  "vpn4tv-fake-dns": parseBooleanPreference,
   "tailscale-ssh": parseTailscaleSSH,
   "terminal-config": parseTerminalConfig,
   "desktop-active-server": (value) => {
@@ -126,6 +129,11 @@ export function onPreferenceChanged(listener: (name: string) => void): () => voi
 }
 
 function notifyPreferenceChanged(name: string, value?: unknown): void {
+  if (name === "vpn4tv-fake-dns") {
+    // The stored config is generated, so the switch only takes effect once the
+    // profiles are rebuilt.
+    void regenerateRemoteProfiles().catch(() => {});
+  }
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.webContents.isDestroyed()) {
       window.webContents.send(PREFERENCES_CHANGED, name, value);

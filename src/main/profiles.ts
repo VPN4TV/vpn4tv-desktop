@@ -413,6 +413,26 @@ export async function selectProfile(id: string): Promise<void> {
   await reloadIfSelectedAndRunning(id);
 }
 
+/**
+ * VPN4TV: regenerate every remote profile — used when a setting that the
+ * generator depends on (FakeDNS) changes, since the stored config is the
+ * generated one. Local profiles keep whatever the user provided.
+ */
+export async function regenerateRemoteProfiles(): Promise<void> {
+  for (const profile of profilesState().profiles) {
+    if (profile.type !== "remote" || profile.remoteUrl === undefined) {
+      continue;
+    }
+    try {
+      const content = await fetchRemoteContent(profile.remoteUrl, profile.id);
+      await atomicWriteFile(contentPath(profile.id), content);
+      await reloadIfSelectedAndRunning(profile.id);
+    } catch {
+      // A refresh failure must not lose the profile the user already has.
+    }
+  }
+}
+
 export async function startSelectedProfile(): Promise<void> {
   const selectedId = selectedProfileId();
   if (selectedId === null) {

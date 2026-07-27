@@ -61,7 +61,18 @@ export function convertSubscription(content: string): string {
   if (proxies.length === 0) {
     throw new EmptySubscriptionError();
   }
-  return generateConfig(proxies);
+  return generateConfig(proxies, { fakeDns: fakeDnsEnabled() });
+}
+
+const fakeDnsPreference = new Preference<boolean>(
+  "vpn4tv-fake-dns",
+  true,
+  (value) => value !== false,
+);
+
+/** FakeDNS is on unless the user turned it off (it bypasses DNS blocking). */
+export function fakeDnsEnabled(): boolean {
+  return fakeDnsPreference.get();
 }
 
 // ---- per-profile subscription metadata (expiry / traffic) ----

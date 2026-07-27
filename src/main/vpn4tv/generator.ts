@@ -36,7 +36,13 @@ export class NoProxiesError extends Error {
  * Build a complete sing-box profile (JSON string) from parsed proxies, with the
  * bridge configs embedded when bridge transports are present.
  */
-export function generateConfig(input: ProxyConfig[]): string {
+export interface GenerateOptions {
+  /** FakeDNS bypasses DNS blocking; users on networks where the fakeip path is
+   *  broken can turn it off (the mobile clients expose the same switch). */
+  fakeDns?: boolean;
+}
+
+export function generateConfig(input: ProxyConfig[], options: GenerateOptions = {}): string {
   if (input.length === 0) {
     throw new NoProxiesError();
   }
@@ -82,9 +88,10 @@ export function generateConfig(input: ProxyConfig[]): string {
 
   dedupeTags(proxies);
 
+  const fakeDns = options.fakeDns !== false && fakeDnsPossible(proxies);
   const config: Json = {
     log: { level: "info", timestamp: true },
-    dns: buildDns(proxies),
+    dns: buildDns(proxies, fakeDns),
     inbounds: [
       {
         type: "tun",
@@ -98,7 +105,7 @@ export function generateConfig(input: ProxyConfig[]): string {
     outbounds: buildOutbounds(proxies),
     route: buildRoute(proxies),
   };
-  if (fakeDnsEnabled(proxies)) {
+  if (fakeDns) {
     config.experimental = { cache_file: { enabled: true, store_fakeip: true } };
   }
 
@@ -161,7 +168,8 @@ function allTcpBridged(proxies: ProxyConfig[]): boolean {
   return proxies.every((proxy) => proxy.outlineUrl !== undefined || proxy.awgIni !== undefined);
 }
 
-function fakeDnsEnabled(proxies: ProxyConfig[]): boolean {
+/** All-TCP-bridged profiles resolve upstream, so fakeip has nothing to do. */
+function fakeDnsPossible(proxies: ProxyConfig[]): boolean {
   return !allTcpBridged(proxies);
 }
 
@@ -179,11 +187,10 @@ function parseDnsUrl(url: string): { type: string; server: string } {
   return { type: "udp", server: url.replace("udp://", "") };
 }
 
-function buildDns(proxies: ProxyConfig[]): Json {
+function buildDns(proxies: ProxyConfig[], fakeDns: boolean): Json {
   const tcpOnly = allTcpBridged(proxies);
   const remote = parseDnsUrl(lastDns.remoteDns);
   const direct = parseDnsUrl(lastDns.directDns);
-  const fakeDns = fakeDnsEnabled(proxies);
 
   const remoteServer: Json = {
     type: remote.type,
