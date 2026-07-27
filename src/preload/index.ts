@@ -182,6 +182,7 @@ const bridge: DesktopBridge = {
     list: () => callProfiles("list"),
     vpn4tvSubscriptionInfo: (id) => callProfiles("vpn4tvSubscriptionInfo", id),
     vpn4tvDeviceId: () => callProfiles("vpn4tvDeviceId"),
+    vpn4tvImportManual: (name, content) => callProfiles("vpn4tvImportManual", name, content),
     create: (init) => callProfiles("create", init),
     updateMetadata: (id, patch) => callProfiles("updateMetadata", id, patch),
     remove: (id) => callProfiles("remove", id),

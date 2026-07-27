@@ -162,6 +162,8 @@ export interface ProfilesBridge {
   vpn4tvSubscriptionInfo(id: string): Promise<VPN4TVSubscriptionInfo | null>;
   /** VPN4TV: stable per-install id, shown in About for support. */
   vpn4tvDeviceId(): Promise<string>;
+  /** Import pasted proxy URIs, a subscription link, or a plain config. */
+  vpn4tvImportManual(name: string, content: string): Promise<string>;
   create(init: ProfileCreate): Promise<ProfileMetadata>;
   updateMetadata(id: string, patch: ProfileMetadataPatch): Promise<void>;
   remove(id: string): Promise<void>;
