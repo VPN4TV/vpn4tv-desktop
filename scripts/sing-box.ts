@@ -9,6 +9,9 @@ const repositoryRoot = path.resolve(
 
 export function findBoxDirectory(): string {
   const candidates = [
+    // VPN4TV: our fork first — it carries the embedded bridges and the
+    // vpn4tv config key the desktop daemon needs.
+    path.resolve(repositoryRoot, "../sing-box-xhttp"),
     path.resolve(repositoryRoot, "../.."),
     path.resolve(repositoryRoot, "../sing-box"),
   ];

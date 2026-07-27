@@ -29,7 +29,7 @@ cat > "$OUT/tsconfig.json" <<EOF
     "typeRoots": ["$OUT/node_modules/@types"],
     "outDir": "$OUT/js"
   },
-  "include": ["$PWD/src/shared/vpn4tv/**/*.ts"]
+  "include": ["$PWD/src/main/vpn4tv/**/*.ts"]
 }
 EOF
 
