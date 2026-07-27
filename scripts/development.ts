@@ -6,7 +6,6 @@ import { parseArgs } from "node:util";
 
 import { goCommand } from "./goCommand";
 import { findBoxDirectory } from "./sing-box";
-import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const singBoxDirectory = findBoxDirectory();
@@ -69,25 +68,6 @@ function ensureGenerated() {
   }
   if (!fs.existsSync(path.join(repositoryRoot, "src", "shared", "gen"))) {
     runChecked("pnpm", ["generate"]);
-  }
-}
-
-async function ensureWindowsShareModule() {
-  const moduleDirectory = path.join(repositoryRoot, "native", "windows-share");
-  const outputPath = path.join(moduleDirectory, "build", "Release", "windows_share.node");
-  const sourcePaths = [
-    path.join(moduleDirectory, "Cargo.lock"),
-    path.join(moduleDirectory, "Cargo.toml"),
-    path.join(moduleDirectory, "build.rs"),
-    path.join(moduleDirectory, "src", "lib.rs"),
-  ];
-  const outputModifiedAt = fs.existsSync(outputPath) ? fs.statSync(outputPath).mtimeMs : 0;
-  if (sourcePaths.every((sourcePath) => fs.statSync(sourcePath).mtimeMs <= outputModifiedAt)) {
-    return;
-  }
-  await buildWindowsShareModule(process.arch, outputPath);
-  if (!fs.existsSync(outputPath)) {
-    throw new Error(`Windows sharing module does not exist: ${outputPath}`);
   }
 }
 
@@ -156,9 +136,6 @@ function applicationExitCode(application: ChildProcess): Promise<number> {
 async function main(): Promise<number> {
   ensureGenerated();
   if (commandLine["daemon-socket"]) {
-    if (process.platform === "win32") {
-      await ensureWindowsShareModule();
-    }
     applicationProcess = startApplication(commandLine["daemon-socket"]);
     return applicationExitCode(applicationProcess);
   }

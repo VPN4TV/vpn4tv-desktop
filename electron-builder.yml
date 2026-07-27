@@ -58,11 +58,9 @@ win:
       to: daemon
       filter:
         - libcronet.dll
-    - from: bin/windows/${arch}/windows_share.node
-      to: native/windows_share.node
   target:
     - nsis
-  artifactName: VPN4TV-Windows-${version}-${env.SFW_ARCHITECTURE}.${ext}
+  artifactName: VPN4TV-Windows-${version}-${arch}.${ext}
 nsis:
   oneClick: false
   buildUniversalInstaller: false
@@ -77,7 +75,7 @@ nsis:
   allowToChangeInstallationDirectory: false
   deleteAppDataOnUninstall: false
   include: build/installer.nsh
-  artifactName: VPN4TV-Windows-${version}-${env.SFW_ARCHITECTURE}.${ext}
+  artifactName: VPN4TV-Windows-${version}-${arch}.${ext}
 linux:
   appId: com.vpn4tv.desktop
   syncDesktopName: true

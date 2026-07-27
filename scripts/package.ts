@@ -13,7 +13,6 @@ import { goCommand } from "./goCommand";
 import { findBoxDirectory } from "./sing-box";
 import { configureReproducibleBuild } from "./reproducibility";
 import { readApplicationVersion, readGoVersion } from "./version";
-import { buildWindowsShareModule } from "./windowsShare";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -226,7 +225,15 @@ function stageWindowsCronetLibrary(
   fs.chmodSync(destinationPath, 0o644);
 }
 
-function readWindowsSigningConfiguration(): WindowsSigningConfiguration {
+function readWindowsSigningConfiguration(): WindowsSigningConfiguration | null {
+  // VPN4TV: we have no Windows code-signing certificate yet. Without one the
+  // build still works; SmartScreen just warns on first run.
+  if (!fs.existsSync(signingConfigurationPath)) {
+    console.warn(
+      "[package] signing.local.json is absent: building an UNSIGNED package, SmartScreen will warn users",
+    );
+    return null;
+  }
   let value: unknown;
   try {
     value = JSON.parse(fs.readFileSync(signingConfigurationPath, "utf-8"));
@@ -262,9 +269,9 @@ function readWindowsSigningConfiguration(): WindowsSigningConfiguration {
 async function runWindowsElectronBuilder(
   architecture: Arch,
   artifactArchitecture: string,
-  signingConfiguration: WindowsSigningConfiguration,
+  signingConfiguration: WindowsSigningConfiguration | null,
 ): Promise<void> {
-  const artifactName = `SFW-\${version}-${artifactArchitecture}${developmentPackage ? "-dev" : ""}.\${ext}`;
+  const artifactName = `VPN4TV-Windows-\${version}-${artifactArchitecture}${developmentPackage ? "-dev" : ""}.\${ext}`;
   const unpackedDirectory = {
     x64: "win-unpacked",
     x86: "win-ia32-unpacked",
@@ -296,13 +303,16 @@ async function runWindowsElectronBuilder(
         extends: path.join(repositoryRoot, "electron-builder.yml"),
         extraMetadata: { version: readApplicationVersion() },
         npmRebuild: false,
-        win: {
-          artifactName,
-          signtoolOptions: {
-            certificateFile: signingConfiguration.certificateFile,
-            certificatePassword: signingConfiguration.certificatePassword,
-          },
-        },
+        win:
+          signingConfiguration === null
+            ? { artifactName, forceCodeSigning: false }
+            : {
+                artifactName,
+                signtoolOptions: {
+                  certificateFile: signingConfiguration.certificateFile,
+                  certificatePassword: signingConfiguration.certificatePassword,
+                },
+              },
         nsis: { artifactName, warningsAsErrors: false },
       },
     });
@@ -355,7 +365,7 @@ async function packageWindowsArchitecture(artifactArchitecture: string) {
   if (architecture === undefined) {
     throw new Error(`unknown Windows architecture: ${artifactArchitecture}`);
   }
-  const stagedPaths = ["sing-box-daemon.exe", "windows_share.node"];
+  const stagedPaths = ["sing-box-daemon.exe"];
   if (architecture.includesCronet) {
     stagedPaths.push("libcronet.dll");
   }
@@ -440,33 +450,6 @@ async function packageWindows() {
       }
     }),
   );
-  console.info(
-    `[package] building Windows sharing modules: ${selectedArchitectures.map((architecture) => architecture.artifactArchitecture).join(", ")}`,
-  );
-  for (const architecture of selectedArchitectures) {
-    await buildWindowsShareModule(
-      architecture.builderArchitectureName,
-      path.join(
-        repositoryRoot,
-        "bin",
-        "windows",
-        architecture.builderArchitectureName,
-        "windows_share.node",
-      ),
-    );
-  }
-  for (const architecture of selectedArchitectures) {
-    verifyPortableExecutableArchitecture(
-      path.join(
-        repositoryRoot,
-        "bin",
-        "windows",
-        architecture.builderArchitectureName,
-        "windows_share.node",
-      ),
-      architecture.portableExecutableMachine,
-    );
-  }
   const buildEnvironment = {
     ...process.env,
     ELECTRON_BUILDER_DISABLE_BUILD_CACHE: "true",

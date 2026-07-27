@@ -372,7 +372,6 @@ export interface ProfileFileImport {
 
 export interface AppBridge {
   version(): Promise<string>;
-  shareFile(fileName: string, data: Uint8Array): Promise<void>;
   showMainWindow(): Promise<void>;
   closeTrayMenu(): Promise<void>;
   quit(): Promise<void>;

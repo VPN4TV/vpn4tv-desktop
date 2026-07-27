@@ -299,7 +299,6 @@ const bridge: DesktopBridge = {
   },
   app: {
     version: () => callResult(APP_CALL, "version"),
-    shareFile: (fileName, data) => callResult(APP_CALL, "shareFile", fileName, data),
     showMainWindow: () => callResult(APP_CALL, "showMainWindow"),
     closeTrayMenu: () => callResult(APP_CALL, "closeTrayMenu"),
     quit: () => callResult(APP_CALL, "quit"),

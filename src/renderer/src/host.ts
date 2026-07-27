@@ -223,12 +223,6 @@ export function createDesktopHost(): DesktopHost {
     },
     updates: bridge.updates,
     application: {
-      shareFile: async (fileName, data) => {
-        await bridge.app.shareFile(
-          fileName,
-          typeof data === "string" ? new TextEncoder().encode(data) : data,
-        );
-      },
       showMainWindow: () => {
         void bridge.app.showMainWindow();
       },

@@ -31,13 +31,13 @@ exports.afterPack = async (context) => {
   if (context.electronPlatformName !== "win32") {
     return;
   }
-  for (const relativePath of [
-    ["daemon", "sing-box-daemon.exe"],
-    ["native", "windows_share.node"],
-  ]) {
+  // VPN4TV: an unsigned tester build has nothing to sign here.
+  const signingRequired =
+    context.packager.platformSpecificBuildOptions.forceCodeSigning !== false;
+  for (const relativePath of [["daemon", "sing-box-daemon.exe"]]) {
     const executablePath = path.join(context.appOutDir, "resources", ...relativePath);
     const signed = await context.packager.signIf(executablePath);
-    if (!signed) {
+    if (!signed && signingRequired) {
       throw new Error(`failed to sign ${relativePath.join("/")}`);
     }
   }
