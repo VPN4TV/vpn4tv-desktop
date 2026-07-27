@@ -8,7 +8,13 @@
 
 import { Preference } from "../database";
 import { generateConfig } from "./generator";
-import { deviceHeaders, newHwid, type DeviceIdentity } from "./onboarding";
+import {
+  deviceHeaders,
+  newHwid,
+  parseUserInfo,
+  type DeviceIdentity,
+  type SubscriptionUserInfo,
+} from "./onboarding";
 import { parseSubscription } from "./parser";
 
 const hwidPreference = new Preference<string>("vpn4tv_hwid", "", (value) =>
@@ -56,4 +62,38 @@ export function convertSubscription(content: string): string {
     throw new EmptySubscriptionError();
   }
   return generateConfig(proxies);
+}
+
+// ---- per-profile subscription metadata (expiry / traffic) ----
+
+
+function userInfoPreference(profileId: string): Preference<string> {
+  return new Preference<string>(`vpn4tv_userinfo_${profileId}`, "", (value) =>
+    typeof value === "string" ? value : "",
+  );
+}
+
+/** Remember what the subscription headers said, so the home screen can show it. */
+export function rememberSubscriptionInfo(profileId: string, headers: Headers): void {
+  const info = parseUserInfo(headers.get("subscription-userinfo"));
+  if (info === undefined) {
+    return;
+  }
+  userInfoPreference(profileId).set(JSON.stringify(info));
+}
+
+export function subscriptionInfo(profileId: string): SubscriptionUserInfo | null {
+  const stored = userInfoPreference(profileId).get();
+  if (stored.length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(stored) as SubscriptionUserInfo;
+  } catch {
+    return null;
+  }
+}
+
+export function forgetSubscriptionInfo(profileId: string): void {
+  userInfoPreference(profileId).set(null);
 }

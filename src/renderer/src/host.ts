@@ -188,6 +188,7 @@ export function createDesktopHost(): DesktopHost {
       triggerOOMReport: () => desktopApi.triggerOOMReport(),
     },
     profiles: {
+      vpn4tvSubscriptionInfo: (id) => bridge.profiles.vpn4tvSubscriptionInfo(id),
       list: () => bridge.profiles.list(),
       onChanged: (listener) => bridge.profiles.onChanged(listener),
       create: async (init) => {

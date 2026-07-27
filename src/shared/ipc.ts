@@ -158,6 +158,8 @@ export interface ProfileMetadataPatch {
 
 export interface ProfilesBridge {
   list(): Promise<ProfilesState>;
+  /** VPN4TV: expiry / traffic captured from the subscription headers. */
+  vpn4tvSubscriptionInfo(id: string): Promise<VPN4TVSubscriptionInfo | null>;
   create(init: ProfileCreate): Promise<ProfileMetadata>;
   updateMetadata(id: string, patch: ProfileMetadataPatch): Promise<void>;
   remove(id: string): Promise<void>;
@@ -391,6 +393,13 @@ export type VPN4TVOnboardingEvent =
   | { type: "imported"; profileName: string }
   | { type: "error"; message: string }
   | { type: "offline" };
+
+export interface VPN4TVSubscriptionInfo {
+  upload?: number;
+  download?: number;
+  total?: number;
+  expireEpochSec?: number;
+}
 
 export interface VPN4TVOnboardingBridge {
   start(): Promise<VPN4TVOnboardingSession>;

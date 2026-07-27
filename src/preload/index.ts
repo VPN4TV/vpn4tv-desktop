@@ -180,6 +180,7 @@ const bridge: DesktopBridge = {
   },
   profiles: {
     list: () => callProfiles("list"),
+    vpn4tvSubscriptionInfo: (id) => callProfiles("vpn4tvSubscriptionInfo", id),
     create: (init) => callProfiles("create", init),
     updateMetadata: (id, patch) => callProfiles("updateMetadata", id, patch),
     remove: (id) => callProfiles("remove", id),

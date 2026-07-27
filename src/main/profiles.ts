@@ -3,7 +3,13 @@ import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { convertSubscription, subscriptionHeaders } from "./vpn4tv";
+import {
+  convertSubscription,
+  forgetSubscriptionInfo,
+  rememberSubscriptionInfo,
+  subscriptionHeaders,
+  subscriptionInfo,
+} from "./vpn4tv";
 import { ServiceStatus_Type } from "../shared/gen/daemon/started_service_pb";
 import { ProfileContent_Type } from "../shared/gen/experimental/boxdd/desktop_service_pb";
 import { PROFILES_CALL, PROFILES_CHANGED } from "../shared/ipc";
@@ -202,7 +208,7 @@ async function readLimitedResponse(
 // Mirrors libbox's HTTPClient (experimental/libbox/http.go): SetURL turns
 // URL userinfo into a basic Authorization header, and Execute accepts only
 // HTTP 200, reporting other statuses as "HTTP <Status>: <body>".
-async function fetchRemoteContent(remoteUrl: string): Promise<string> {
+async function fetchRemoteContent(remoteUrl: string, profileId?: string): Promise<string> {
   const requestUrl = new URL(remoteUrl);
   // VPN4TV: identify the install and the platform — the backend tailors the
   // returned subscription on x-device-os.
@@ -238,6 +244,9 @@ async function fetchRemoteContent(remoteUrl: string): Promise<string> {
   // VPN4TV: subscriptions arrive as proxy URIs / Xray JSON / base64 / vpn://,
   // not as sing-box configs — convert before anything stores or starts them.
   // A response that already is a sing-box config passes through untouched.
+  if (profileId !== undefined) {
+    rememberSubscriptionInfo(profileId, response.headers);
+  }
   return convertSubscription(
     await readLimitedResponse(response, MAXIMUM_REMOTE_PROFILE_BYTES),
   );
@@ -372,7 +381,7 @@ function updateRemoteProfile(id: string): Promise<void> {
     if (profile.type !== "remote" || !profile.remoteUrl) {
       throw new Error("not a remote profile");
     }
-    const remoteContent = await fetchRemoteContent(profile.remoteUrl);
+    const remoteContent = await fetchRemoteContent(profile.remoteUrl, profile.id);
     await checkConfig(remoteContent);
     try {
       const oldContent = await readFile(contentPath(profile.id), "utf-8");
@@ -468,6 +477,11 @@ const handlers: Record<
     return profilesState();
   },
 
+  // VPN4TV: expiry / traffic captured from the subscription headers.
+  async vpn4tvSubscriptionInfo(id: string): Promise<unknown> {
+    return subscriptionInfo(id);
+  },
+
   async create(init: ProfileCreate): Promise<ProfileMetadata> {
     const profile: ProfileMetadata = {
       id: crypto.randomUUID(),
@@ -483,7 +497,7 @@ const handlers: Record<
         throw new Error("missing remote URL");
       }
       profile.remoteUrl = init.remoteUrl;
-      content = await fetchRemoteContent(init.remoteUrl);
+      content = await fetchRemoteContent(init.remoteUrl, profile.id);
       await checkConfig(content);
       profile.lastUpdated = Date.now();
     } else {
@@ -504,7 +518,7 @@ const handlers: Record<
         profile.type === "remote" &&
         patch.remoteUrl !== profile.remoteUrl
       ) {
-        remoteContent = await fetchRemoteContent(patch.remoteUrl);
+        remoteContent = await fetchRemoteContent(patch.remoteUrl, id);
         await checkConfig(remoteContent);
         await atomicWriteFile(contentPath(id), remoteContent);
       }
@@ -559,6 +573,7 @@ const handlers: Record<
     await runProfileOperation(id, async () => {
       findProfile(id);
       const store = settingsDatabase();
+      forgetSubscriptionInfo(id);
       store.transaction(() => {
         store.prepare("DELETE FROM profiles WHERE id = ?").run(id);
         if (selectedProfileId() === id) {
