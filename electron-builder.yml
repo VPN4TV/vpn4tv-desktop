@@ -1,4 +1,4 @@
-productName: sing-box
+productName: VPN4TV
 copyright: nekohasekai
 publish: null
 afterPack: scripts/afterPack.cjs
@@ -43,7 +43,7 @@ fileAssociations:
     description: sing-box profile
     mimeType: application/x-sing-box-profile
 win:
-  appId: io.nekohasekai.sfw
+  appId: com.vpn4tv.desktop
   forceCodeSigning: true
   icon: resources/icon.ico
   signtoolOptions:
@@ -62,7 +62,7 @@ win:
       to: native/windows_share.node
   target:
     - nsis
-  artifactName: SFW-${version}-${env.SFW_ARCHITECTURE}.${ext}
+  artifactName: VPN4TV-Windows-${version}-${env.SFW_ARCHITECTURE}.${ext}
 nsis:
   oneClick: false
   buildUniversalInstaller: false
@@ -77,11 +77,11 @@ nsis:
   allowToChangeInstallationDirectory: false
   deleteAppDataOnUninstall: false
   include: build/installer.nsh
-  artifactName: SFW-${version}-${env.SFW_ARCHITECTURE}.${ext}
+  artifactName: VPN4TV-Windows-${version}-${env.SFW_ARCHITECTURE}.${ext}
 linux:
-  appId: io.nekohasekai.sfl
+  appId: com.vpn4tv.desktop
   syncDesktopName: true
-  executableName: sing-box
+  executableName: vpn4tv
   icon: resources/icons
   synopsis: The universal proxy platform
   category: Network
@@ -105,7 +105,7 @@ linux:
     - deb
     - rpm
     - pacman
-  artifactName: SFL-${version}-${arch}.${ext}
+  artifactName: VPN4TV-Linux-${version}-${arch}.${ext}
 deb:
   packageCategory: net
   afterInstall: build/linux-after-install.sh
@@ -134,7 +134,7 @@ rpm:
     - build/io.nekohasekai.sfl.policy=/usr/share/polkit-1/actions/io.nekohasekai.sfl.policy
     - build/io.nekohasekai.sfl.metainfo.xml=/usr/share/metainfo/io.nekohasekai.sfl.metainfo.xml
 pacman:
-  artifactName: SFL-${version}-${arch}.pkg.tar.zst
+  artifactName: VPN4TV-Linux-${version}-${arch}.pkg.tar.zst
   packageCategory: network
   afterInstall: build/linux-after-install-pacman.sh
   afterRemove: build/linux-after-remove-pacman.sh

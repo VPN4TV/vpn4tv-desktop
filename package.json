@@ -1,13 +1,12 @@
 {
-  "name": "sing-box",
-  "desktopName": "sing-box.desktop",
+  "name": "vpn4tv",
+  "desktopName": "vpn4tv.desktop",
   "private": true,
-  "description": "Windows and Linux client for sing-box, the universal proxy platform.",
-  "homepage": "https://github.com/sagernet/sing-box-for-desktop",
+  "description": "VPN4TV desktop client",
+  "homepage": "https://vpn4tv.com",
   "license": "GPL-3.0-or-later",
   "author": {
-    "name": "SagerNet",
-    "email": "contact-sagernet@sekai.icu"
+    "name": "VPN4TV"
   },
   "repository": {
     "type": "git",
