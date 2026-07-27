@@ -13,7 +13,10 @@ import { SINGBOX_PASSTHROUGH_TAG, lastDns, type ProxyConfig } from "./parser";
 
 /** Loopback SOCKS ports for the embedded bridges. */
 export const BRIDGE_PORTS = {
-  socksHost: "127.0.0.127",
+  // Desktop uses plain localhost: only 127.0.0.1 is assigned on macOS and
+  // Windows (Linux/Android bind the whole 127.0.0.0/8, which is why the mobile
+  // ports can afford 127.0.0.127 to stay off the busy localhost).
+  socksHost: "127.0.0.1",
   base: 42890, // xray bucket
   outlineOffset: 1000, // outline bucket = base + 1000
   wireguardOffset: 2000, // wireproxy bucket = base + 2000
@@ -130,7 +133,9 @@ function socksLoopback(tag: string, port: number): Json {
     server_port: port,
     version: "5",
     network: "tcp",
-    bind_interface: "lo",
+    // No bind_interface: "lo" is a Linux/Android-ism (macOS calls it lo0 and
+    // Windows has no such name). The bridge lives in the daemon process, whose
+    // own sockets auto_route already excludes, so there is no routing loop.
   };
 }
 
