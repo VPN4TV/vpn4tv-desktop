@@ -3,6 +3,7 @@ import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
+import { injectProbedDns, probeDns } from "./vpn4tv/dns";
 import {
   convertSubscription,
   hwid,
@@ -350,8 +351,12 @@ async function startServiceWithContent(content: string): Promise<void> {
   if (desktopService === null) {
     throw new Error("daemon is not available");
   }
+  // VPN4TV: pick a resolver that is actually reachable on this network before
+  // handing the config over — Russian ISPs kill DoH providers in waves, and the
+  // one baked into the profile may be dead. Best effort: the probe never blocks
+  // a connect for more than a few seconds and leaves the config alone on failure.
   await desktopService.startService({
-    configContent: content,
+    configContent: injectProbedDns(content, await probeDns()),
     options: await oomStartOptions(),
   });
 }

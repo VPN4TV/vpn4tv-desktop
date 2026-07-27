@@ -37,6 +37,8 @@ cat > "$OUT/tsconfig.json" <<EOF
     "$PWD/src/main/vpn4tv/parser.ts",
     "$PWD/src/main/vpn4tv/generator.ts",
     "$PWD/src/main/vpn4tv/onboarding.ts",
+    "$PWD/src/main/vpn4tv/dns.ts",
+    "$PWD/src/main/vpn4tv/dns.test.ts",
     "$PWD/src/main/vpn4tv/converter.test.ts",
     "$PWD/src/main/vpn4tv/onboarding.test.ts",
     "$PWD/src/main/vpn4tv/integration.test.ts"
