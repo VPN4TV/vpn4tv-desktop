@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join } from "node:path";
 
 export const LOGIN_ITEM_ARGUMENT = "--start-at-login";
 
-const LINUX_LOGIN_ITEM_NAME = "sing-box.desktop";
+const LINUX_LOGIN_ITEM_NAME = "vpn4tv.desktop";
 
 function linuxLoginItemPath(): string {
   const environmentConfigHome = process.env.XDG_CONFIG_HOME;
@@ -47,9 +47,9 @@ function setLinuxOpenAtLogin(value: boolean) {
       "[Desktop Entry]",
       "Type=Application",
       "Version=1.0",
-      "Name=sing-box",
+      "Name=VPN4TV",
       `Exec=${escapeDesktopExecArgument(app.getPath("exe"))} ${LOGIN_ITEM_ARGUMENT}`,
-      "Icon=sing-box",
+      "Icon=vpn4tv",
       "Terminal=false",
       "StartupNotify=false",
       "X-GNOME-Autostart-enabled=true",

@@ -16,7 +16,7 @@ export function configureApplicationPaths(developmentUserDataPath: string): Appl
   if (configuredPaths !== null) {
     return configuredPaths;
   }
-  const defaultUserDataPath = join(app.getPath("appData"), "sing-box");
+  const defaultUserDataPath = join(app.getPath("appData"), "VPN4TV");
   let paths: ApplicationPaths;
   if (developmentUserDataPath !== "") {
     paths = {
