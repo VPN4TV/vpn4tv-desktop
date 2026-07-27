@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { goCommand } from "./goCommand";
 import { findBoxDirectory } from "./sing-box";
 import { buildWindowsShareModule } from "./windowsShare";
 
@@ -166,7 +167,7 @@ async function main(): Promise<number> {
     return 1;
   }
   runChecked(
-    "go",
+    goCommand(),
     [
       "run",
       "./cmd/internal/build_boxdd",

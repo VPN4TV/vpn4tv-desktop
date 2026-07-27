@@ -9,6 +9,7 @@ import {
   Platform,
 } from "electron-builder";
 
+import { goCommand } from "./goCommand";
 import { findBoxDirectory } from "./sing-box";
 import { configureReproducibleBuild } from "./reproducibility";
 import { readApplicationVersion, readGoVersion } from "./version";
@@ -67,7 +68,7 @@ function runChecked(
 }
 
 function verifyGoVersion() {
-  const result = spawnSync("go", ["env", "GOVERSION"], {
+  const result = spawnSync(goCommand(), ["env", "GOVERSION"], {
     cwd: singBoxDirectory,
     encoding: "utf-8",
     env: goEnvironment(),
@@ -141,7 +142,7 @@ function buildBoxdd(
   }
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   return runCheckedConcurrent(
-    "go",
+    goCommand(),
     [
       "run",
       "./cmd/internal/build_boxdd",
@@ -192,7 +193,7 @@ function stageWindowsCronetLibrary(
   builderArchitecture: string,
 ) {
   const modulePath = `github.com/sagernet/cronet-go/lib/windows_${goArchitecture}`;
-  const result = spawnSync("go", ["list", "-m", "-f", "{{.Dir}}", modulePath], {
+  const result = spawnSync(goCommand(), ["list", "-m", "-f", "{{.Dir}}", modulePath], {
     cwd: singBoxDirectory,
     encoding: "utf-8",
     env: goEnvironment(),

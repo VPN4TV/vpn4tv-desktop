@@ -9,3 +9,6 @@ node_modules/
 /signing.local.json
 /CLAUDE.md
 /.claude/
+
+# VPN4TV: locally built daemon binaries (built by scripts/development.ts)
+/bin/
