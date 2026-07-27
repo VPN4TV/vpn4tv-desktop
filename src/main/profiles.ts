@@ -3,6 +3,7 @@ import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
+import { convertSubscription, subscriptionHeaders } from "./vpn4tv";
 import { ServiceStatus_Type } from "../shared/gen/daemon/started_service_pb";
 import { ProfileContent_Type } from "../shared/gen/experimental/boxdd/desktop_service_pb";
 import { PROFILES_CALL, PROFILES_CHANGED } from "../shared/ipc";
@@ -203,7 +204,9 @@ async function readLimitedResponse(
 // HTTP 200, reporting other statuses as "HTTP <Status>: <body>".
 async function fetchRemoteContent(remoteUrl: string): Promise<string> {
   const requestUrl = new URL(remoteUrl);
-  const headers = new Headers({ "User-Agent": `sing-box/${__APP_VERSION__}` });
+  // VPN4TV: identify the install and the platform — the backend tailors the
+  // returned subscription on x-device-os.
+  const headers = new Headers(subscriptionHeaders(__APP_VERSION__));
   if (requestUrl.username !== "" || requestUrl.password !== "") {
     const credentials = `${decodeURIComponent(requestUrl.username)}:${decodeURIComponent(requestUrl.password)}`;
     headers.set(
@@ -232,7 +235,12 @@ async function fetchRemoteContent(remoteUrl: string): Promise<string> {
     }
     throw new Error(`HTTP ${status}: ${body}`);
   }
-  return await readLimitedResponse(response, MAXIMUM_REMOTE_PROFILE_BYTES);
+  // VPN4TV: subscriptions arrive as proxy URIs / Xray JSON / base64 / vpn://,
+  // not as sing-box configs — convert before anything stores or starts them.
+  // A response that already is a sing-box config passes through untouched.
+  return convertSubscription(
+    await readLimitedResponse(response, MAXIMUM_REMOTE_PROFILE_BYTES),
+  );
 }
 
 async function insertProfile(
