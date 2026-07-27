@@ -59,6 +59,8 @@ export function createDesktopHost(): DesktopHost {
   });
 
   return {
+    // VPN4TV: onboarding is a thin pass-through — the poll lives in main.
+    vpn4tvOnboarding: bridge.vpn4tvOnboarding,
     platform: bridge.platform,
     appVersion: () => bridge.app.version(),
     transport,

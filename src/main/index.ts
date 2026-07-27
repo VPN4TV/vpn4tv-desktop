@@ -26,6 +26,7 @@ import { registerPreferences } from "./preferences";
 import { registerOpenConnectBrowser } from "./openConnectBrowser";
 import { registerProfileEditorWindows } from "./profileEditorWindows";
 import { registerProfiles } from "./profiles";
+import { registerOnboarding } from "./vpn4tv/onboardingService";
 import { registerSetup } from "./repair";
 import { registerReports } from "./reports";
 import { resourcePath } from "./resources";
@@ -385,6 +386,7 @@ if (!singleInstanceLock) {
     registerCore();
     registerReports();
     registerPreferences();
+    registerOnboarding(__APP_VERSION__);
     registerProfiles();
     registerServers();
     registerSettings(updateTrayVisibility);

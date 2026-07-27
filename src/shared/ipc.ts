@@ -52,6 +52,10 @@ export interface DaemonBridge {
   onStateChanged(listener: (state: DaemonConnectionState) => void): () => void;
 }
 
+// VPN4TV: Telegram onboarding session (main process drives the poll).
+export const VPN4TV_ONBOARDING_CALL = "vpn4tv:onboarding-call";
+export const VPN4TV_ONBOARDING_EVENT = "vpn4tv:onboarding-event";
+
 export const PROFILES_CALL = "profiles:call";
 export const PROFILES_CHANGED = "profiles:changed";
 export const SERVERS_CALL = "servers:call";
@@ -373,7 +377,31 @@ export interface AppBridge {
   onProfileFileImport(listener: (request: ProfileFileImport) => void): () => void;
 }
 
+export interface VPN4TVOnboardingSession {
+  uuid: string;
+  code: string;
+  codeDisplay: string;
+  qrLink: string;
+  deepLink: string;
+  proxyUrl: string;
+}
+
+export type VPN4TVOnboardingEvent =
+  | { type: "user"; name: string }
+  | { type: "imported"; profileName: string }
+  | { type: "error"; message: string }
+  | { type: "offline" };
+
+export interface VPN4TVOnboardingBridge {
+  start(): Promise<VPN4TVOnboardingSession>;
+  restart(): Promise<VPN4TVOnboardingSession>;
+  cancel(): Promise<void>;
+  openExternal(link: string): Promise<void>;
+  onEvent(listener: (event: VPN4TVOnboardingEvent) => void): () => void;
+}
+
 export interface DesktopBridge {
+  vpn4tvOnboarding: VPN4TVOnboardingBridge;
   platform: string;
   daemon: DaemonBridge;
   setup: SetupBridge;

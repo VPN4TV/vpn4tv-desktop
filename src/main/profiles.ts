@@ -692,6 +692,12 @@ const handlers: Record<
   },
 };
 
+/** VPN4TV: create a profile from outside the IPC layer (Telegram onboarding). */
+export async function createProfile(init: ProfileCreate): Promise<ProfileMetadata> {
+  const create = handlers.create as (init: ProfileCreate) => Promise<ProfileMetadata>;
+  return await create(init);
+}
+
 export function registerProfiles() {
   ipcMain.handle(
     PROFILES_CALL,

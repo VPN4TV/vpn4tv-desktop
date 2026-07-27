@@ -1,6 +1,9 @@
 #!/bin/bash
 # VPN4TV: run the converter unit tests without the full Electron toolchain.
 #
+# Only the Electron-free modules are compiled here (the service that creates
+# profiles needs Electron and vite's __APP_VERSION__ define; pnpm typecheck
+# covers those).
 # The repo pins Node 26 + pnpm for the app build; the converter is plain
 # TypeScript depending only on node: builtins, so it compiles and runs under any
 # modern Node. TypeScript and @types/node are installed into a temp dir, so this
@@ -29,7 +32,15 @@ cat > "$OUT/tsconfig.json" <<EOF
     "typeRoots": ["$OUT/node_modules/@types"],
     "outDir": "$OUT/js"
   },
-  "include": ["$PWD/src/main/vpn4tv/**/*.ts"]
+  "include": [
+    "$PWD/src/main/vpn4tv/support.ts",
+    "$PWD/src/main/vpn4tv/parser.ts",
+    "$PWD/src/main/vpn4tv/generator.ts",
+    "$PWD/src/main/vpn4tv/onboarding.ts",
+    "$PWD/src/main/vpn4tv/converter.test.ts",
+    "$PWD/src/main/vpn4tv/onboarding.test.ts",
+    "$PWD/src/main/vpn4tv/integration.test.ts"
+  ]
 }
 EOF
 

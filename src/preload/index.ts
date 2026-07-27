@@ -26,6 +26,8 @@ import {
   PROFILE_EDITOR_WINDOW_OPEN,
   PROFILE_FILE_IMPORT,
   PROFILES_CALL,
+  VPN4TV_ONBOARDING_CALL,
+  VPN4TV_ONBOARDING_EVENT,
   PROFILES_CHANGED,
   REPORTS_CALL,
   SERVERS_CALL,
@@ -48,6 +50,7 @@ import type {
   ProfilesResult,
   StreamEvent,
   UpdatesState,
+  VPN4TVOnboardingEvent,
 } from "../shared/ipc";
 
 async function callResult<T>(channel: string, method: string, ...callArguments: unknown[]): Promise<T> {
@@ -158,6 +161,22 @@ const bridge: DesktopBridge = {
     oomRemove: (name) => callReports("oomRemove", name),
     oomRemoveAll: () => callReports("oomRemoveAll"),
     triggerAppCrash: (type) => callReports("triggerAppCrash", type),
+  },
+  // VPN4TV: Telegram onboarding — the main process owns the poll loop and
+  // pushes progress here.
+  vpn4tvOnboarding: {
+    start: () => ipcRenderer.invoke(VPN4TV_ONBOARDING_CALL, "start"),
+    restart: () => ipcRenderer.invoke(VPN4TV_ONBOARDING_CALL, "restart"),
+    cancel: () => ipcRenderer.invoke(VPN4TV_ONBOARDING_CALL, "cancel"),
+    openExternal: (link: string) => ipcRenderer.invoke(VPN4TV_ONBOARDING_CALL, "openExternal", link),
+    onEvent: (listener) => {
+      const handler = (_event: unknown, payload: unknown) =>
+        listener(payload as VPN4TVOnboardingEvent);
+      ipcRenderer.on(VPN4TV_ONBOARDING_EVENT, handler);
+      return () => {
+        ipcRenderer.off(VPN4TV_ONBOARDING_EVENT, handler);
+      };
+    },
   },
   profiles: {
     list: () => callProfiles("list"),
