@@ -105,6 +105,8 @@ const rendererPreferences: Record<string, PreferenceParser> = {
   "connection-state-filter": stringChoice("all", "active", "closed"),
   "connection-sort": stringChoice("date", "traffic", "trafficTotal"),
   "disable-deprecated-warnings": parseBooleanPreference,
+  // VPN4TV: connect as soon as the app starts (parity with the mobile clients).
+  "vpn4tv-auto-connect": parseBooleanPreference,
   "tailscale-ssh": parseTailscaleSSH,
   "terminal-config": parseTerminalConfig,
   "desktop-active-server": (value) => {

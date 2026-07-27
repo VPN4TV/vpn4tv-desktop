@@ -25,8 +25,9 @@ import { hasLoginItemArgument, migrateLoginItem, wasOpenedAtLogin } from "./logi
 import { registerPreferences } from "./preferences";
 import { registerOpenConnectBrowser } from "./openConnectBrowser";
 import { registerProfileEditorWindows } from "./profileEditorWindows";
-import { registerProfiles } from "./profiles";
+import { registerProfiles, startSelectedProfile } from "./profiles";
 import { registerOnboarding } from "./vpn4tv/onboardingService";
+import { Preference } from "./database";
 import { registerSetup } from "./repair";
 import { registerReports } from "./reports";
 import { resourcePath } from "./resources";
@@ -45,10 +46,17 @@ import { prepareTrayMenuWindow, showTrayMenu } from "./trayMenu";
 import { registerTerminalWindows } from "./terminalWindows";
 import { applyTitleBarOverlayColors, titleBarOverlay } from "./titleBarOverlay";
 import {
+
   MAIN_WINDOW_MINIMUM_HEIGHT,
   MAIN_WINDOW_MINIMUM_WIDTH,
   restoredMainWindowBounds,
 } from "./windowState";
+
+/** VPN4TV: connect as soon as the app starts, when the user asked for it. */
+function autoConnectEnabled(): boolean {
+  return new Preference<boolean>("vpn4tv-auto-connect", false, (value) => value === true).get();
+}
+
 
 let handlingFatalError = false;
 
@@ -401,6 +409,11 @@ if (!singleInstanceLock) {
     }
     initializeTray(showWindow);
     updateTrayVisibility(trayEnabled());
+    // VPN4TV: auto-connect on launch when the user asked for it. Best effort —
+    // a failure here must not stop the app from opening.
+    if (autoConnectEnabled()) {
+      void startSelectedProfile().catch(() => {});
+    }
     if (testScriptPath) {
       const workArea = screen.getPrimaryDisplay().workArea;
       const anchor = {
