@@ -25,7 +25,8 @@ import { hasLoginItemArgument, migrateLoginItem, wasOpenedAtLogin } from "./logi
 import { registerPreferences } from "./preferences";
 import { registerOpenConnectBrowser } from "./openConnectBrowser";
 import { registerProfileEditorWindows } from "./profileEditorWindows";
-import { registerProfiles, startSelectedProfile } from "./profiles";
+import { scheduleCrashReportUpload } from "./crashUpload";
+import { importPastedContent, registerProfiles, startSelectedProfile } from "./profiles";
 import { registerOnboarding } from "./vpn4tv/onboardingService";
 import { Preference } from "./database";
 import { registerSetup } from "./repair";
@@ -260,6 +261,41 @@ function showWindow(): BrowserWindow {
   return createWindow();
 }
 
+// VPN4TV: clicking a server key on a site or in a chat should land in the app,
+// the way it does on Android. The parser already understands all of these.
+const PROXY_LINK_SCHEMES = [
+  "vless",
+  "vmess",
+  "trojan",
+  "ss",
+  "ssr",
+  "hysteria",
+  "hysteria2",
+  "hy2",
+  "tuic",
+  "wg",
+  "vpn4tv",
+];
+
+function isProxyLink(link: string): boolean {
+  const scheme = link.slice(0, link.indexOf(":")).toLowerCase();
+  return PROXY_LINK_SCHEMES.includes(scheme);
+}
+
+/** The name after "#", which is what these links carry as a label. */
+function proxyLinkName(link: string): string {
+  const hash = link.indexOf("#");
+  if (hash === -1) {
+    return "VPN4TV";
+  }
+  try {
+    const name = decodeURIComponent(link.slice(hash + 1)).trim();
+    return name === "" ? "VPN4TV" : name;
+  } catch {
+    return "VPN4TV";
+  }
+}
+
 function parseImportLink(link: string): DeepLinkImport | null {
   let parsed: URL;
   try {
@@ -302,6 +338,13 @@ function sendWhenLoaded(channel: string, payload: unknown) {
 }
 
 function handleDeepLink(link: string) {
+  if (isProxyLink(link)) {
+    // Import straight away: the profile list is what the user came for, and
+    // the home screen picks the new profile up through its change event.
+    showWindow();
+    void importPastedContent(proxyLinkName(link), link).catch(() => {});
+    return;
+  }
   const request = parseImportLink(link);
   if (request === null) {
     return;
@@ -322,7 +365,9 @@ function handleProfileFile(path: string) {
 }
 
 function deepLinkFromArguments(argv: string[]): string | undefined {
-  return argv.find((argument) => argument.startsWith("sing-box://"));
+  return argv.find(
+    (argument) => argument.startsWith("sing-box://") || isProxyLink(argument),
+  );
 }
 
 function profileFileFromArguments(argv: string[]): string | undefined {
@@ -334,6 +379,9 @@ if (!singleInstanceLock) {
   app.quit();
 } else {
   app.setAsDefaultProtocolClient("sing-box");
+  for (const scheme of PROXY_LINK_SCHEMES) {
+    app.setAsDefaultProtocolClient(scheme);
+  }
 
   app.on("second-instance", (_event, argv) => {
     const link = deepLinkFromArguments(argv);
@@ -393,6 +441,7 @@ if (!singleInstanceLock) {
     registerSetup(() => daemonState.retryConnection());
     registerCore();
     registerReports();
+    scheduleCrashReportUpload();
     registerPreferences();
     registerOnboarding(__APP_VERSION__);
     registerProfiles();

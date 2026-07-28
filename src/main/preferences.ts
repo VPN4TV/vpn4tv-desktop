@@ -110,6 +110,10 @@ const rendererPreferences: Record<string, PreferenceParser> = {
   "vpn4tv-auto-connect": parseBooleanPreference,
   // VPN4TV: FakeDNS (DNS-block bypass) — regenerating profiles picks this up.
   "vpn4tv-fake-dns": parseBooleanPreference,
+  // VPN4TV: keep LAN traffic off the tunnel (same switch as on Android).
+  "vpn4tv-lan-bypass": parseBooleanPreference,
+  // VPN4TV: send crash dumps to our receiver, as the mobile clients do.
+  "vpn4tv-send-crash-reports": parseBooleanPreference,
   "tailscale-ssh": parseTailscaleSSH,
   "terminal-config": parseTerminalConfig,
   "desktop-active-server": (value) => {
@@ -129,7 +133,7 @@ export function onPreferenceChanged(listener: (name: string) => void): () => voi
 }
 
 function notifyPreferenceChanged(name: string, value?: unknown): void {
-  if (name === "vpn4tv-fake-dns") {
+  if (name === "vpn4tv-fake-dns" || name === "vpn4tv-lan-bypass") {
     // The stored config is generated, so the switch only takes effect once the
     // profiles are rebuilt.
     void regenerateRemoteProfiles().catch(() => {});

@@ -217,6 +217,17 @@ async function saveArchive(fileName: string, data: Uint8Array, encrypted: boolea
   return true;
 }
 
+/** VPN4TV: the crash uploader needs the same list the UI shows. */
+export async function listCrashReports(): Promise<CrashReportEntry[]> {
+  const list = handlers.list as () => Promise<CrashReportEntry[]>;
+  return list();
+}
+
+export async function readCrashReport(name: string): Promise<CrashReportFile[]> {
+  const read = handlers.read as (name: string) => Promise<CrashReportFile[]>;
+  return read(name);
+}
+
 export function registerReports() {
   ipcMain.handle(
     REPORTS_CALL,

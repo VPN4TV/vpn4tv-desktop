@@ -37,7 +37,9 @@ export type OnboardingEvent =
   | { type: "user"; name: string }
   | { type: "imported"; profileName: string }
   | { type: "error"; message: string }
-  | { type: "offline" };
+  | { type: "offline" }
+  // The poll gave up: the code on screen is dead and must be replaced.
+  | { type: "expired" };
 
 let session: OnboardingSession | null = null;
 let cancelled = false;
@@ -95,6 +97,9 @@ async function pollLoop(active: OnboardingSession, version: string): Promise<voi
       consecutiveNetworkErrors = 0;
     }
     await sleep(POLL_INTERVAL_MILLISECONDS);
+  }
+  if (!cancelled && session === active) {
+    broadcast({ type: "expired" });
   }
 }
 

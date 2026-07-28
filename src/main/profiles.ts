@@ -517,13 +517,7 @@ const handlers: Record<
   // remote profile so it keeps updating itself; anything else (proxy URIs,
   // base64, a plain config) is converted once into a local profile.
   async vpn4tvImportManual(name: string, text: string): Promise<string> {
-    const trimmed = text.trim();
-    const profile = await createProfile(
-      /^https?:\/\/\S+$/iu.test(trimmed)
-        ? { name, type: "remote", remoteUrl: trimmed, autoUpdate: true }
-        : { name, type: "local", content: convertSubscription(trimmed) },
-    );
-    return profile.id;
+    return importPastedContent(name, text);
   },
 
   async create(init: ProfileCreate): Promise<ProfileMetadata> {
@@ -752,6 +746,21 @@ const handlers: Record<
 };
 
 /** VPN4TV: create a profile from outside the IPC layer (Telegram onboarding). */
+/**
+ * VPN4TV: turn pasted or deep-linked content into a profile. A bare link
+ * becomes a remote profile so it keeps updating itself; anything else is
+ * converted once into a local one.
+ */
+export async function importPastedContent(name: string, text: string): Promise<string> {
+  const trimmed = text.trim();
+  const profile = await createProfile(
+    /^https?:\/\/\S+$/iu.test(trimmed)
+      ? { name, type: "remote", remoteUrl: trimmed, autoUpdate: true }
+      : { name, type: "local", content: convertSubscription(trimmed) },
+  );
+  return profile.id;
+}
+
 export async function createProfile(init: ProfileCreate): Promise<ProfileMetadata> {
   const create = handlers.create as (init: ProfileCreate) => Promise<ProfileMetadata>;
   return await create(init);

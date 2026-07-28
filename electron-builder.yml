@@ -89,6 +89,17 @@ linux:
     - name: sing-box
       schemes:
         - sing-box
+    # VPN4TV: server keys open in the app, as on Android.
+    - name: VPN4TV server key
+      schemes:
+        - vless
+        - vmess
+        - trojan
+        - ss
+        - hysteria2
+        - hy2
+        - tuic
+        - vpn4tv
   extraResources:
     - from: resources/tray.png
       to: tray.png

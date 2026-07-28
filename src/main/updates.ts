@@ -22,8 +22,10 @@ import { applicationCacheDirectory } from "./appCache";
 import { parseBooleanPreference, Preference } from "./database";
 import { desktopService } from "./daemon";
 
-const RELEASES_URL = "https://api.github.com/repos/SagerNet/sing-box/releases";
-const RELEASES_PER_PAGE = 100;
+// VPN4TV: our own feed. Upstream polled SagerNet's GitHub releases and offered
+// their SFW-*.exe as an update to this app — a foreign installer the daemon
+// would reject anyway (it demands the same signing certificate).
+const APPCAST_URL = "https://bell.a4e.ar/vpn4tv-desktop-appcast.json";
 const RELEASES_REQUEST_TIMEOUT_MILLISECONDS = 30_000;
 const EXIT_CODE_CANCELLED = 1223;
 const EXIT_CODE_LAUNCH_FAILED = 1224;
@@ -187,61 +189,50 @@ function loadCachedUpdate(): boolean {
   return lastShownUpdateVersionPreference.get() !== info.versionName;
 }
 
-interface GitHubAsset {
-  name: string;
-  browser_download_url: string;
-  size: number;
+/** One build of one release, as published in our appcast. */
+interface AppcastBuild {
+  arch: string;
+  url: string;
+  size?: number;
 }
 
-interface GitHubRelease {
-  tag_name: string;
-  html_url: string;
-  body?: string | null;
-  draft: boolean;
-  prerelease: boolean;
-  assets: GitHubAsset[];
+interface AppcastRelease {
+  version: string;
+  prerelease?: boolean;
+  notes?: string;
+  releaseUrl?: string;
+  builds: AppcastBuild[];
 }
 
-async function fetchReleases(track: UpdateTrack, githubToken: string): Promise<GitHubRelease[]> {
-  const releases: GitHubRelease[] = [];
-  const headers = new Headers({
-    "Accept": "application/vnd.github+json",
-    "User-Agent": `sing-box/${__APP_VERSION__}`,
+async function fetchReleases(): Promise<AppcastRelease[]> {
+  const response = await fetch(APPCAST_URL, {
+    headers: new Headers({ "User-Agent": `VPN4TV/${__APP_VERSION__}` }),
+    signal: AbortSignal.timeout(RELEASES_REQUEST_TIMEOUT_MILLISECONDS),
   });
-  const token = githubToken.trim();
-  if (token !== "") {
-    headers.set("Authorization", `token ${token}`);
+  if (!response.ok) {
+    throw new Error(`fetch releases: HTTP ${response.status}`);
   }
-  let page = 1;
-  for (;;) {
-    const response = await fetch(
-      `${RELEASES_URL}?per_page=${RELEASES_PER_PAGE}&page=${page}`,
-      {
-        headers,
-        signal: AbortSignal.timeout(RELEASES_REQUEST_TIMEOUT_MILLISECONDS),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`fetch releases: HTTP ${response.status}`);
-    }
-    const pageReleases = (await response.json()) as GitHubRelease[];
-    releases.push(...pageReleases);
-    if (track !== "stable" || pageReleases.length < RELEASES_PER_PAGE) {
-      return releases;
-    }
-    page += 1;
+  const feed = (await response.json()) as { releases?: unknown };
+  if (!Array.isArray(feed.releases)) {
+    throw new Error("update feed has no releases");
   }
+  return feed.releases.filter(
+    (release): release is AppcastRelease =>
+      typeof release === "object" &&
+      release !== null &&
+      typeof (release as AppcastRelease).version === "string" &&
+      Array.isArray((release as AppcastRelease).builds),
+  );
 }
 
-function findWindowsAsset(assets: GitHubAsset[]): GitHubAsset | null {
+function findWindowsAsset(builds: AppcastBuild[]): AppcastBuild | null {
   if (updateArchitectureTokens === undefined) {
     throw new Error(`unsupported Windows architecture: ${process.arch}`);
   }
-  const executables = assets.filter(
-    (asset) => asset.name.startsWith("SFW-") && asset.name.endsWith(".exe"),
-  );
   for (const token of updateArchitectureTokens) {
-    const match = executables.find((asset) => asset.name.endsWith(`-${token}.exe`));
+    const match = builds.find(
+      (build) => build.arch === token && typeof build.url === "string" && build.url !== "",
+    );
     if (match !== undefined) {
       return match;
     }
@@ -260,28 +251,24 @@ async function checkForUpdate(): Promise<AppUpdateInfo | null> {
   broadcastState();
   try {
     const track = currentTrack();
-    const releases = await fetchReleases(track, githubTokenPreference.get());
+    const releases = await fetchReleases();
     if (currentTrack() !== track) {
       return runtime.info;
     }
     let best: AppUpdateInfo | null = null;
     for (const release of releases) {
-      if (release.draft) {
-        continue;
-      }
-      const asset = findWindowsAsset(release.assets);
+      const asset = findWindowsAsset(release.builds);
       if (asset === null) {
         continue;
       }
-      if (!release.prerelease && !stableTrackAvailablePreference.get()) {
+      const isPrerelease = release.prerelease === true;
+      if (!isPrerelease && !stableTrackAvailablePreference.get()) {
         stableTrackAvailablePreference.set(true);
       }
-      if (track === "stable" && release.prerelease) {
+      if (track === "stable" && isPrerelease) {
         continue;
       }
-      const version = release.tag_name.startsWith("v")
-        ? release.tag_name.slice(1)
-        : release.tag_name;
+      const version = release.version.startsWith("v") ? release.version.slice(1) : release.version;
       if (!shouldIncludeVersion(version, track)) {
         continue;
       }
@@ -290,11 +277,11 @@ async function checkForUpdate(): Promise<AppUpdateInfo | null> {
       }
       best = {
         versionName: version,
-        releaseURL: release.html_url,
-        downloadURL: asset.browser_download_url,
-        releaseNotes: release.body ?? "",
-        isPrerelease: release.prerelease,
-        fileSize: asset.size,
+        releaseURL: release.releaseUrl ?? APPCAST_URL,
+        downloadURL: asset.url,
+        releaseNotes: release.notes ?? "",
+        isPrerelease,
+        fileSize: asset.size ?? 0,
       };
     }
     setUpdateInfo(best);

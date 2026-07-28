@@ -61,7 +61,7 @@ export function convertSubscription(content: string): string {
   if (proxies.length === 0) {
     throw new EmptySubscriptionError();
   }
-  return generateConfig(proxies, { fakeDns: fakeDnsEnabled() });
+  return generateConfig(proxies, { fakeDns: fakeDnsEnabled(), lanBypass: lanBypassEnabled() });
 }
 
 const fakeDnsPreference = new Preference<boolean>(
@@ -73,6 +73,17 @@ const fakeDnsPreference = new Preference<boolean>(
 /** FakeDNS is on unless the user turned it off (it bypasses DNS blocking). */
 export function fakeDnsEnabled(): boolean {
   return fakeDnsPreference.get();
+}
+
+const lanBypassPreference = new Preference<boolean>(
+  "vpn4tv-lan-bypass",
+  true,
+  (value) => value !== false,
+);
+
+/** LAN stays off the tunnel unless the user asks for the opposite. */
+export function lanBypassEnabled(): boolean {
+  return lanBypassPreference.get();
 }
 
 // ---- per-profile subscription metadata (expiry / traffic) ----

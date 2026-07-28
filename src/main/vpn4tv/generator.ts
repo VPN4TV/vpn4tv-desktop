@@ -40,6 +40,10 @@ export interface GenerateOptions {
   /** FakeDNS bypasses DNS blocking; users on networks where the fakeip path is
    *  broken can turn it off (the mobile clients expose the same switch). */
   fakeDns?: boolean;
+  /** Keep LAN traffic off the tunnel — otherwise a network drive, a printer or
+   *  the router's own page stops answering while connected. Default on, as on
+   *  Android. */
+  lanBypass?: boolean;
 }
 
 export function generateConfig(input: ProxyConfig[], options: GenerateOptions = {}): string {
@@ -103,11 +107,13 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
       },
     ],
     outbounds: buildOutbounds(proxies),
-    route: buildRoute(proxies),
+    route: buildRoute(proxies, options.lanBypass !== false),
   };
-  if (fakeDns) {
-    config.experimental = { cache_file: { enabled: true, store_fakeip: true } };
-  }
+  // The cache file is what remembers the user's server choice across restarts;
+  // fakeip storage rides along when FakeDNS is on.
+  config.experimental = {
+    cache_file: { enabled: true, ...(fakeDns ? { store_fakeip: true } : {}) },
+  };
 
   const bridges: Json = {};
   if (xrayOutbounds.length > 0) {
@@ -242,8 +248,12 @@ function buildOutbounds(proxies: ProxyConfig[]): Json[] {
   ];
 }
 
-function buildRoute(proxies: ProxyConfig[]): Json {
+function buildRoute(proxies: ProxyConfig[], lanBypass: boolean): Json {
   const rules: Json[] = [{ action: "sniff" }, { protocol: "dns", action: "hijack-dns" }];
+  if (lanBypass) {
+    // Before anything else: private destinations never belong in the tunnel.
+    rules.push({ ip_is_private: true, outbound: "direct" });
+  }
   if (allTcpBridged(proxies)) {
     rules.push({ network: "udp", outbound: "direct" });
   }

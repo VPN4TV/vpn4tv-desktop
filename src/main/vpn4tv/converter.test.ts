@@ -227,6 +227,29 @@ test("generated profile shape: selector, urltest, route and fakeip", () => {
   assert.equal(config[BRIDGE_CONFIG_KEY], undefined, "no bridges → no private key in the profile");
 });
 
+test("the server choice survives a restart, and LAN stays off the tunnel", () => {
+  const [proxy] = parseSubscription(
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&sni=a#A",
+  );
+  // Defaults: the cache file remembers the selection even with FakeDNS off.
+  const plain = JSON.parse(generateConfig([proxy], { fakeDns: false }));
+  // The selector persists its choice as soon as the cache file exists.
+  assert.equal(plain.experimental.cache_file.enabled, true);
+  assert.equal(plain.experimental.cache_file.store_selected, undefined);
+  assert.equal(plain.experimental.cache_file.store_fakeip, undefined);
+  const privateRule = (plain.route.rules as any[]).find((rule) => rule.ip_is_private === true);
+  assert.deepEqual(privateRule, { ip_is_private: true, outbound: "direct" });
+  // …and the sniff/hijack rules still come first.
+  assert.equal(plain.route.rules[0].action, "sniff");
+  assert.equal(plain.route.rules[1].action, "hijack-dns");
+
+  const noBypass = JSON.parse(generateConfig([proxy], { lanBypass: false }));
+  assert.equal(
+    (noBypass.route.rules as any[]).some((rule) => rule.ip_is_private === true),
+    false,
+  );
+});
+
 test("empty input is rejected", () => {
   assert.throws(() => generateConfig([]), NoProxiesError);
   assert.deepEqual(parseSubscription("   \n # comment\n"), []);
