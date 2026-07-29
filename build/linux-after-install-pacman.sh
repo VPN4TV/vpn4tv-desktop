@@ -1,11 +1,11 @@
 #!/bin/bash
 
-ln -sf /opt/sing-box/sing-box /usr/bin/sing-box
+ln -sf /opt/VPN4TV/vpn4tv /usr/bin/sing-box
 
 if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
-    chmod 4755 /opt/sing-box/chrome-sandbox || true
+    chmod 4755 /opt/VPN4TV/chrome-sandbox || true
 else
-    chmod 0755 /opt/sing-box/chrome-sandbox || true
+    chmod 0755 /opt/VPN4TV/chrome-sandbox || true
 fi
 
 if hash update-mime-database 2>/dev/null; then

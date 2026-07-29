@@ -81,10 +81,10 @@ linux:
   syncDesktopName: true
   executableName: vpn4tv
   icon: resources/icons
-  synopsis: The universal proxy platform
+  synopsis: VPN for Android TV, desktop and mobile
   category: Network
-  maintainer: 世界 <i@sekai.icu>
-  vendor: SagerNet
+  maintainer: VPN4TV <support@vpn4tv.com>
+  vendor: VPN4TV
   protocols:
     - name: sing-box
       schemes:
@@ -109,7 +109,7 @@ linux:
       to: daemon/sing-box-daemon
   desktop:
     entry:
-      StartupWMClass: sing-box
+      StartupWMClass: vpn4tv
   target:
     - deb
     - rpm

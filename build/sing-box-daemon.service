@@ -1,5 +1,5 @@
 [Unit]
-Description=sing-box Service
+Description=VPN4TV Service
 After=network-online.target
 Wants=network-online.target
 
@@ -8,7 +8,7 @@ Type=simple
 StateDirectory=sing-box-daemon
 StateDirectoryMode=0700
 UMask=0077
-ExecStart=/opt/sing-box/resources/daemon/sing-box-daemon run --working-directory /var/lib/sing-box-daemon --socket /run/sing-box.socket
+ExecStart=/opt/VPN4TV/resources/daemon/sing-box-daemon run --working-directory /var/lib/sing-box-daemon --socket /run/sing-box.socket
 Restart=always
 RestartSec=5
 

@@ -3,23 +3,23 @@
   <id>io.nekohasekai.sfl</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>sing-box</name>
-  <summary>The universal proxy platform</summary>
+  <name>VPN4TV</name>
+  <summary>VPN for Android TV, desktop and mobile</summary>
   <description>
-    <p>Linux client for sing-box, the universal proxy platform</p>
+    <p>VPN4TV desktop client, built on the sing-box proxy platform</p>
   </description>
   <keywords>
     <keyword>network</keyword>
   </keywords>
-  <launchable type="desktop-id">sing-box.desktop</launchable>
-  <developer id="io.nekohasekai">
-    <name>nekohasekai</name>
+  <launchable type="desktop-id">vpn4tv.desktop</launchable>
+  <developer id="com.vpn4tv">
+    <name>VPN4TV</name>
   </developer>
-  <url type="homepage">https://sing-box.sagernet.org/</url>
-  <url type="bugtracker">https://github.com/SagerNet/sing-box/issues</url>
+  <url type="homepage">https://t.me/VPN4TV</url>
+  <url type="bugtracker">https://t.me/vpn4tv_support</url>
   <url type="vcs-browser">https://github.com/SagerNet/sing-box</url>
   <provides>
-    <binary>sing-box</binary>
+    <binary>vpn4tv</binary>
     <mediatype>application/x-sing-box-profile</mediatype>
   </provides>
   <supports>
