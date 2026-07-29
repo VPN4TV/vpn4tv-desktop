@@ -42,6 +42,28 @@ fileAssociations:
     name: sing-box profile
     description: sing-box profile
     mimeType: application/x-sing-box-profile
+# VPN4TV: the Electron client for macOS. The native SwiftUI client remains the
+# better fit there, but this ships the same feature set without an Apple
+# Developer ID.
+mac:
+  appId: com.vpn4tv.desktop
+  category: public.app-category.utilities
+  icon: resources/icon.icns
+  darkModeSupport: true
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null
+  extraResources:
+    - from: resources/trayTemplate.png
+      to: trayTemplate.png
+    - from: bin/sing-box-daemon
+      to: daemon/sing-box-daemon
+  target:
+    - dmg
+  artifactName: VPN4TV-macOS-${version}-${arch}.${ext}
+dmg:
+  artifactName: VPN4TV-macOS-${version}-${arch}.${ext}
+  title: VPN4TV
 win:
   appId: com.vpn4tv.desktop
   forceCodeSigning: true

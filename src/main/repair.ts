@@ -9,7 +9,10 @@ import { applicationPaths } from "./applicationPaths";
 const EXIT_CODE_CANCELLED = 1223;
 const EXIT_CODE_LAUNCH_FAILED = 1224;
 
-const repairSupported = process.platform === "win32" || process.platform === "linux";
+const repairSupported =
+  process.platform === "win32" ||
+  process.platform === "linux" ||
+  process.platform === "darwin";
 
 export function daemonBinaryPath(): string {
   const binaryName =
@@ -144,6 +147,48 @@ function runElevatedLinux(commandArguments: string[]): Promise<number> {
   });
 }
 
+/** Single-quote for AppleScript's `do shell script`. */
+function appleScriptQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+const OSASCRIPT_EXIT_CODE_CANCELLED = 1;
+
+function runElevatedDarwin(commandArguments: string[]): Promise<number> {
+  const shellCommand = [daemonBinaryPath(), ...commandArguments]
+    .map(appleScriptQuote)
+    .join(" ");
+  // The inner string is AppleScript source, so quotes have to survive twice.
+  const script = `do shell script "${shellCommand.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}" with administrator privileges`;
+  return new Promise((resolve, reject) => {
+    execFile(
+      "osascript",
+      ["-e", script],
+      { timeout: 120000 },
+      (error, _stdout, stderr) => {
+        if (error === null) {
+          resolve(0);
+          return;
+        }
+        if (typeof error.code !== "number") {
+          if (error.code === "ENOENT") {
+            resolve(EXIT_CODE_LAUNCH_FAILED);
+            return;
+          }
+          reject(error);
+          return;
+        }
+        // "User canceled." is what osascript reports when the dialog is dismissed.
+        if (error.code === OSASCRIPT_EXIT_CODE_CANCELLED && /User canceled/iu.test(stderr)) {
+          resolve(EXIT_CODE_CANCELLED);
+          return;
+        }
+        resolve(error.code);
+      },
+    );
+  });
+}
+
 function runElevatedWindows(commandArguments: string[]): Promise<number> {
   const argumentList = commandArguments.map(windowsCommandLineQuote).join(" ");
   const script = [
@@ -186,12 +231,14 @@ function runElevatedWindows(commandArguments: string[]): Promise<number> {
 export async function runElevatedServiceCommand(
   commandArguments: string[],
 ): Promise<boolean> {
-  if (process.platform !== "win32" && process.platform !== "linux") {
+  if (!repairSupported) {
     throw new Error("elevated service commands are not supported on this platform");
   }
   const exitCode = await (process.platform === "linux"
     ? runElevatedLinux(commandArguments)
-    : runElevatedWindows(commandArguments));
+    : process.platform === "darwin"
+      ? runElevatedDarwin(commandArguments)
+      : runElevatedWindows(commandArguments));
   if (exitCode === 0) {
     return true;
   }
@@ -215,7 +262,9 @@ async function repair(action: "install" | "start", onRepaired: () => void): Prom
   }
   const exitCode = await (process.platform === "linux"
     ? runElevatedLinux(commandArguments)
-    : runElevatedWindows(commandArguments));
+    : process.platform === "darwin"
+      ? runElevatedDarwin(commandArguments)
+      : runElevatedWindows(commandArguments));
   if (exitCode === 0) {
     onRepaired();
     return true;

@@ -479,6 +479,45 @@ async function packageWindows() {
   }
 }
 
+const macArchitectures = [
+  { goArchitecture: "arm64", builderArchitectureArgument: "--arm64", artifactArchitecture: "arm64" },
+  { goArchitecture: "amd64", builderArchitectureArgument: "--x64", artifactArchitecture: "x64" },
+] as const;
+
+async function packageMac() {
+  const requestedArchitectures = new Set(packageArguments);
+  const supported = new Set<string>(macArchitectures.map((entry) => entry.artifactArchitecture));
+  for (const architecture of requestedArchitectures) {
+    if (!supported.has(architecture)) {
+      throw new Error(`unknown macOS architecture: ${architecture}`);
+    }
+  }
+  const selected = macArchitectures.filter(
+    (architecture) =>
+      requestedArchitectures.size === 0 ||
+      requestedArchitectures.has(architecture.artifactArchitecture),
+  );
+  runChecked("electron-vite", ["build"]);
+  for (const architecture of selected) {
+    await buildBoxdd(
+      "darwin",
+      architecture.goArchitecture,
+      path.join(repositoryRoot, "bin", "sing-box-daemon"),
+    );
+    runChecked("electron-builder", [
+      "--mac",
+      "dmg",
+      architecture.builderArchitectureArgument,
+      "--config",
+      "electron-builder.yml",
+      `--config.extraMetadata.version=${readApplicationVersion()}`,
+      ...(developmentPackage ? ["--config.compression=store"] : []),
+      "--publish",
+      "never",
+    ]);
+  }
+}
+
 const linuxArchitectures = [
   {
     goArchitecture: "amd64",
@@ -562,6 +601,9 @@ async function main(): Promise<void> {
       break;
     case "linux":
       await packageLinux();
+      break;
+    case "mac":
+      await packageMac();
       break;
     default:
       throw new Error(`unknown platform: ${packageMode}`);

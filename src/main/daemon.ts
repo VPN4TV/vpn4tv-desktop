@@ -20,7 +20,10 @@ if (process.platform === "win32" && app.isPackaged) {
       ? "\\\\.\\pipe\\ProtectedPrefix\\Administrators\\sing-box"
       : process.platform === "linux"
         ? "/run/sing-box.socket"
-        : null;
+        // VPN4TV: macOS has no /run; the LaunchDaemon listens here.
+        : process.platform === "darwin"
+          ? "/var/run/sing-box.socket"
+          : null;
   const socketPath = developmentSwitchValue("daemon-socket") || defaultSocketPath;
   if (!socketPath) {
     daemonTransport = null;

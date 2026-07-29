@@ -17,23 +17,54 @@ const expectedFuses = [
 ];
 
 exports.afterSign = async (context) => {
-  const asarPath = path.join(context.appOutDir, "resources", "app.asar");
-  const executablePath = path.join(
-    context.appOutDir,
-    `${context.packager.appInfo.productFilename}${context.electronPlatformName === "win32" ? ".exe" : ""}`,
-  );
-  const executable = await fs.readFile(executablePath);
+  const productFilename = context.packager.appInfo.productFilename;
+  // VPN4TV: on macOS everything lives inside the bundle and the asar hash is
+  // recorded in Info.plist instead of being embedded in the executable.
+  const macOS = context.electronPlatformName === "darwin";
+  const bundlePath = path.join(context.appOutDir, `${productFilename}.app`);
+  const asarPath = macOS
+    ? path.join(bundlePath, "Contents", "Resources", "app.asar")
+    : path.join(context.appOutDir, "resources", "app.asar");
+  const executablePath = macOS
+    ? path.join(bundlePath, "Contents", "MacOS", productFilename)
+    : path.join(
+        context.appOutDir,
+        `${productFilename}${context.electronPlatformName === "win32" ? ".exe" : ""}`,
+      );
+  // The fuse wire is compiled into the framework on macOS, not the launcher.
+  const fusePath = macOS
+    ? path.join(
+        bundlePath,
+        "Contents",
+        "Frameworks",
+        "Electron Framework.framework",
+        "Versions",
+        "A",
+        "Electron Framework",
+      )
+    : executablePath;
+  const executable = await fs.readFile(fusePath);
   const currentAsarHash = crypto
     .createHash("sha256")
     .update(asar.getRawHeader(asarPath).headerString)
     .digest("hex");
-  const currentAsarHashBuffer = Buffer.from(currentAsarHash);
-  const asarHashPosition = executable.indexOf(currentAsarHashBuffer);
-  if (
-    asarHashPosition === -1 ||
-    executable.lastIndexOf(currentAsarHashBuffer) !== asarHashPosition
-  ) {
-    throw new Error("the executable does not contain the current app.asar integrity hash");
+  if (macOS) {
+    const plist = await fs.readFile(
+      path.join(bundlePath, "Contents", "Info.plist"),
+      "utf-8",
+    );
+    if (!plist.includes(currentAsarHash)) {
+      throw new Error("Info.plist does not carry the current app.asar integrity hash");
+    }
+  } else {
+    const currentAsarHashBuffer = Buffer.from(currentAsarHash);
+    const asarHashPosition = executable.indexOf(currentAsarHashBuffer);
+    if (
+      asarHashPosition === -1 ||
+      executable.lastIndexOf(currentAsarHashBuffer) !== asarHashPosition
+    ) {
+      throw new Error("the executable does not contain the current app.asar integrity hash");
+    }
   }
   const sentinelPosition = executable.indexOf(sentinel);
   if (sentinelPosition === -1 || executable.lastIndexOf(sentinel) !== sentinelPosition) {
