@@ -191,6 +191,8 @@ export function createDesktopHost(): DesktopHost {
       vpn4tvSubscriptionInfo: (id) => bridge.profiles.vpn4tvSubscriptionInfo(id),
       vpn4tvDeviceId: () => bridge.profiles.vpn4tvDeviceId(),
       vpn4tvImportManual: (name, content) => bridge.profiles.vpn4tvImportManual(name, content),
+      vpn4tvRunningApplications: () => bridge.profiles.vpn4tvRunningApplications(),
+      vpn4tvPickApplication: () => bridge.profiles.vpn4tvPickApplication(),
       list: () => bridge.profiles.list(),
       onChanged: (listener) => bridge.profiles.onChanged(listener),
       create: async (init) => {

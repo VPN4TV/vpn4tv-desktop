@@ -250,6 +250,41 @@ test("the server choice survives a restart, and LAN stays off the tunnel", () =>
   );
 });
 
+test("split tunnelling by application", () => {
+  const [proxy] = parseSubscription(
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&sni=a#A",
+  );
+  const apps = ["chrome.exe", "Telegram"];
+
+  // Exclude: the listed applications go direct, everything else is proxied.
+  const exclude = JSON.parse(
+    generateConfig([proxy], { perApp: { mode: "exclude", apps } }),
+  );
+  assert.deepEqual(
+    (exclude.route.rules as any[]).find((rule) => rule.process_name !== undefined),
+    { process_name: apps, outbound: "direct" },
+  );
+  assert.equal(exclude.route.final, "select");
+
+  // Include: only the listed applications are proxied, so the default flips.
+  const include = JSON.parse(
+    generateConfig([proxy], { perApp: { mode: "include", apps } }),
+  );
+  assert.deepEqual(
+    (include.route.rules as any[]).find((rule) => rule.process_name !== undefined),
+    { process_name: apps, outbound: "select" },
+  );
+  assert.equal(include.route.final, "direct");
+
+  // An empty list must not flip the default and strand the user offline.
+  const empty = JSON.parse(generateConfig([proxy], { perApp: { mode: "include", apps: [] } }));
+  assert.equal(empty.route.final, "select");
+  assert.equal(
+    (empty.route.rules as any[]).some((rule) => rule.process_name !== undefined),
+    false,
+  );
+});
+
 test("empty input is rejected", () => {
   assert.throws(() => generateConfig([]), NoProxiesError);
   assert.deepEqual(parseSubscription("   \n # comment\n"), []);

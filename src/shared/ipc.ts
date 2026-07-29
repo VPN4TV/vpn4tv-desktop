@@ -164,6 +164,10 @@ export interface ProfilesBridge {
   vpn4tvDeviceId(): Promise<string>;
   /** Import pasted proxy URIs, a subscription link, or a plain config. */
   vpn4tvImportManual(name: string, content: string): Promise<string>;
+  /** Running executables, for setting up split tunnelling. */
+  vpn4tvRunningApplications(): Promise<string[]>;
+  /** Pick an application on disk; returns the name sing-box matches on. */
+  vpn4tvPickApplication(): Promise<string | null>;
   create(init: ProfileCreate): Promise<ProfileMetadata>;
   updateMetadata(id: string, patch: ProfileMetadataPatch): Promise<void>;
   remove(id: string): Promise<void>;

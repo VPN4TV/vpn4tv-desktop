@@ -3,6 +3,7 @@ import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
+import { pickApplication, runningApplications } from "./vpn4tv/applications";
 import { injectProbedDns, probeDns } from "./vpn4tv/dns";
 import {
   convertSubscription,
@@ -511,6 +512,17 @@ const handlers: Record<
   // VPN4TV: expiry / traffic captured from the subscription headers.
   async vpn4tvSubscriptionInfo(id: string): Promise<unknown> {
     return subscriptionInfo(id);
+  },
+
+  // VPN4TV: what is running right now, so split tunnelling can be set up by
+  // ticking applications instead of typing executable names.
+  async vpn4tvRunningApplications(): Promise<string[]> {
+    return runningApplications();
+  },
+
+  // VPN4TV: pick an application that is not running at the moment.
+  async vpn4tvPickApplication(): Promise<string | null> {
+    return pickApplication();
   },
 
   // VPN4TV: the manual paste box the mobile clients have. A bare link becomes a

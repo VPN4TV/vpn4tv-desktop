@@ -7,7 +7,7 @@
 // Android.
 
 import { Preference } from "../database";
-import { generateConfig } from "./generator";
+import { generateConfig, type PerAppProxy } from "./generator";
 import {
   deviceHeaders,
   newHwid,
@@ -61,7 +61,11 @@ export function convertSubscription(content: string): string {
   if (proxies.length === 0) {
     throw new EmptySubscriptionError();
   }
-  return generateConfig(proxies, { fakeDns: fakeDnsEnabled(), lanBypass: lanBypassEnabled() });
+  return generateConfig(proxies, {
+    fakeDns: fakeDnsEnabled(),
+    lanBypass: lanBypassEnabled(),
+    perApp: perAppProxy(),
+  });
 }
 
 const fakeDnsPreference = new Preference<boolean>(
@@ -84,6 +88,35 @@ const lanBypassPreference = new Preference<boolean>(
 /** LAN stays off the tunnel unless the user asks for the opposite. */
 export function lanBypassEnabled(): boolean {
   return lanBypassPreference.get();
+}
+
+const PER_APP_OFF: PerAppProxy = { mode: "off", apps: [] };
+
+export function parsePerAppProxy(value: unknown): PerAppProxy {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid per-app proxy preference");
+  }
+  const candidate = value as Record<string, unknown>;
+  const mode = candidate.mode;
+  if (mode !== "off" && mode !== "exclude" && mode !== "include") {
+    throw new Error("invalid per-app proxy mode");
+  }
+  const apps = candidate.apps;
+  if (!Array.isArray(apps) || apps.some((app) => typeof app !== "string")) {
+    throw new Error("invalid per-app proxy application list");
+  }
+  return { mode, apps: apps as string[] };
+}
+
+const perAppPreference = new Preference<PerAppProxy>(
+  "vpn4tv-per-app",
+  PER_APP_OFF,
+  parsePerAppProxy,
+);
+
+/** Split tunnelling by executable name (the desktop answer to per-app proxy). */
+export function perAppProxy(): PerAppProxy {
+  return perAppPreference.get();
 }
 
 // ---- per-profile subscription metadata (expiry / traffic) ----

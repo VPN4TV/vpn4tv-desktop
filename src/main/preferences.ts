@@ -8,6 +8,7 @@ import {
 import type { ProfilesResult } from "../shared/ipc";
 import { DESKTOP_LANGUAGES } from "../shared/translations";
 import { regenerateRemoteProfiles } from "./profiles";
+import { parsePerAppProxy } from "./vpn4tv";
 import {
   parseBooleanPreference,
   preferenceSnapshot,
@@ -114,6 +115,8 @@ const rendererPreferences: Record<string, PreferenceParser> = {
   "vpn4tv-lan-bypass": parseBooleanPreference,
   // VPN4TV: send crash dumps to our receiver, as the mobile clients do.
   "vpn4tv-send-crash-reports": parseBooleanPreference,
+  // VPN4TV: split tunnelling by executable name.
+  "vpn4tv-per-app": parsePerAppProxy,
   "tailscale-ssh": parseTailscaleSSH,
   "terminal-config": parseTerminalConfig,
   "desktop-active-server": (value) => {
@@ -133,7 +136,11 @@ export function onPreferenceChanged(listener: (name: string) => void): () => voi
 }
 
 function notifyPreferenceChanged(name: string, value?: unknown): void {
-  if (name === "vpn4tv-fake-dns" || name === "vpn4tv-lan-bypass") {
+  if (
+    name === "vpn4tv-fake-dns" ||
+    name === "vpn4tv-lan-bypass" ||
+    name === "vpn4tv-per-app"
+  ) {
     // The stored config is generated, so the switch only takes effect once the
     // profiles are rebuilt.
     void regenerateRemoteProfiles().catch(() => {});

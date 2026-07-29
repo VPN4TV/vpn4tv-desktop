@@ -44,6 +44,18 @@ export interface GenerateOptions {
    *  the router's own page stops answering while connected. Default on, as on
    *  Android. */
   lanBypass?: boolean;
+  /** Split tunnelling by application. Android matches package names; here the
+   *  core matches executable names (process_name), which works the same way on
+   *  Windows, macOS and Linux. */
+  perApp?: PerAppProxy;
+}
+
+export type PerAppMode = "off" | "exclude" | "include";
+
+export interface PerAppProxy {
+  mode: PerAppMode;
+  /** Executable names, e.g. "chrome.exe" or "Telegram". */
+  apps: string[];
 }
 
 export function generateConfig(input: ProxyConfig[], options: GenerateOptions = {}): string {
@@ -107,7 +119,7 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
       },
     ],
     outbounds: buildOutbounds(proxies),
-    route: buildRoute(proxies, options.lanBypass !== false),
+    route: buildRoute(proxies, options.lanBypass !== false, options.perApp),
   };
   // The cache file is what remembers the user's server choice across restarts;
   // fakeip storage rides along when FakeDNS is on.
@@ -248,11 +260,20 @@ function buildOutbounds(proxies: ProxyConfig[]): Json[] {
   ];
 }
 
-function buildRoute(proxies: ProxyConfig[], lanBypass: boolean): Json {
+function buildRoute(proxies: ProxyConfig[], lanBypass: boolean, perApp?: PerAppProxy): Json {
   const rules: Json[] = [{ action: "sniff" }, { protocol: "dns", action: "hijack-dns" }];
   if (lanBypass) {
     // Before anything else: private destinations never belong in the tunnel.
     rules.push({ ip_is_private: true, outbound: "direct" });
+  }
+  // Split tunnelling. The router turns on process lookup by itself as soon as a
+  // rule mentions a process, so no extra switch is needed.
+  const apps = perApp?.apps.filter((app) => app.trim() !== "") ?? [];
+  const perAppMode = apps.length === 0 ? "off" : (perApp?.mode ?? "off");
+  if (perAppMode === "exclude") {
+    rules.push({ process_name: apps, outbound: "direct" });
+  } else if (perAppMode === "include") {
+    rules.push({ process_name: apps, outbound: "select" });
   }
   if (allTcpBridged(proxies)) {
     rules.push({ network: "udp", outbound: "direct" });
@@ -260,7 +281,8 @@ function buildRoute(proxies: ProxyConfig[], lanBypass: boolean): Json {
   return {
     rules,
     auto_detect_interface: true,
-    final: "select",
+    // In "only these applications" mode everything unmatched stays direct.
+    final: perAppMode === "include" ? "direct" : "select",
     default_domain_resolver: { server: "dns-direct" },
   };
 }
