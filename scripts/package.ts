@@ -484,6 +484,38 @@ const macArchitectures = [
   { goArchitecture: "amd64", builderArchitectureArgument: "--x64", artifactArchitecture: "x64" },
 ] as const;
 
+/**
+ * VPN4TV: only a "Developer ID Application" certificate is accepted outside the
+ * App Store and by notarytool. Apple Development / Apple Distribution
+ * certificates in the keychain do NOT qualify, so the build falls back to an
+ * ad-hoc signature and says so.
+ */
+function macSigningIdentity(): string | null {
+  const override = process.env.VPN4TV_MAC_IDENTITY;
+  if (override !== undefined && override !== "") {
+    return override;
+  }
+  const result = spawnSync("security", ["find-identity", "-v", "-p", "codesigning"], {
+    encoding: "utf-8",
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const match = /"(Developer ID Application: [^"]+)"/u.exec(result.stdout);
+  return match === null ? null : match[1];
+}
+
+/** notarytool credentials, as electron-builder expects them in the environment. */
+function macNotarizationConfigured(): boolean {
+  const { APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER } =
+    process.env;
+  const withAppleId =
+    APPLE_ID !== undefined && APPLE_APP_SPECIFIC_PASSWORD !== undefined && APPLE_TEAM_ID !== undefined;
+  const withApiKey =
+    APPLE_API_KEY !== undefined && APPLE_API_KEY_ID !== undefined && APPLE_API_ISSUER !== undefined;
+  return withAppleId || withApiKey;
+}
+
 async function packageMac() {
   const requestedArchitectures = new Set(packageArguments);
   const supported = new Set<string>(macArchitectures.map((entry) => entry.artifactArchitecture));
@@ -497,6 +529,21 @@ async function packageMac() {
       requestedArchitectures.size === 0 ||
       requestedArchitectures.has(architecture.artifactArchitecture),
   );
+  const identity = macSigningIdentity();
+  const notarize = identity !== null && macNotarizationConfigured();
+  if (identity === null) {
+    console.warn(
+      "[package] no Developer ID Application certificate: building an AD-HOC signed app." +
+        " Gatekeeper will block it on other Macs (Privacy & Security -> Open Anyway).",
+    );
+  } else if (!notarize) {
+    console.warn(
+      "[package] signing with " +
+        identity +
+        " but NOT notarising: set APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID" +
+        " (or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER).",
+    );
+  }
   runChecked("electron-vite", ["build"]);
   for (const architecture of selected) {
     await buildBoxdd(
@@ -511,6 +558,10 @@ async function packageMac() {
       "--config",
       "electron-builder.yml",
       `--config.extraMetadata.version=${readApplicationVersion()}`,
+      ...(identity === null
+        ? ["--config.mac.identity=null", "--config.mac.hardenedRuntime=false"]
+        : [`--config.mac.identity=${identity}`]),
+      `--config.mac.notarize=${notarize ? "true" : "false"}`,
       ...(developmentPackage ? ["--config.compression=store"] : []),
       "--publish",
       "never",

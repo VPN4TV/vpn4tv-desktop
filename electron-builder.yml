@@ -50,9 +50,14 @@ mac:
   category: public.app-category.utilities
   icon: resources/icon.icns
   darkModeSupport: true
-  hardenedRuntime: false
+  # Notarisation requires the hardened runtime; the entitlements cover Electron's JIT.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   gatekeeperAssess: false
-  identity: null
+  # The daemon is not inside the app's code, so it has to be signed explicitly.
+  binaries:
+    - Contents/Resources/daemon/sing-box-daemon
   extraResources:
     - from: resources/trayTemplate.png
       to: trayTemplate.png
