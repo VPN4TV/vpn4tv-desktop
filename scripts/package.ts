@@ -479,6 +479,45 @@ async function packageWindows() {
   }
 }
 
+const MAC_PRODUCT_NAME = "VPN4TV Desktop";
+
+/**
+ * electron-builder notarises the .app before it packs the DMG, so the image
+ * itself stays unsigned and Gatekeeper rejects it on mount. Sign, notarise and
+ * staple it here.
+ */
+function notarizeDiskImage(identity: string, artifactArchitecture: string) {
+  const imagePath = path.join(
+    repositoryRoot,
+    "release",
+    `VPN4TV-macOS-${readApplicationVersion()}-${artifactArchitecture}.dmg`,
+  );
+  if (!fs.existsSync(imagePath)) {
+    throw new Error(`disk image does not exist: ${imagePath}`);
+  }
+  runChecked("codesign", ["--sign", `Developer ID Application: ${identity}`, "--timestamp", imagePath]);
+  const credentials =
+    process.env.APPLE_API_KEY !== undefined
+      ? [
+          "--key",
+          process.env.APPLE_API_KEY,
+          "--key-id",
+          process.env.APPLE_API_KEY_ID ?? "",
+          "--issuer",
+          process.env.APPLE_API_ISSUER ?? "",
+        ]
+      : [
+          "--apple-id",
+          process.env.APPLE_ID ?? "",
+          "--password",
+          process.env.APPLE_APP_SPECIFIC_PASSWORD ?? "",
+          "--team-id",
+          process.env.APPLE_TEAM_ID ?? "",
+        ];
+  runChecked("xcrun", ["notarytool", "submit", imagePath, ...credentials, "--wait"]);
+  runChecked("xcrun", ["stapler", "staple", imagePath]);
+}
+
 const macArchitectures = [
   { goArchitecture: "arm64", builderArchitectureArgument: "--arm64", artifactArchitecture: "arm64" },
   { goArchitecture: "amd64", builderArchitectureArgument: "--x64", artifactArchitecture: "x64" },
@@ -491,6 +530,7 @@ const macArchitectures = [
  * ad-hoc signature and says so.
  */
 function macSigningIdentity(): string | null {
+  applyMacSigningConfiguration();
   const override = process.env.VPN4TV_MAC_IDENTITY;
   if (override !== undefined && override !== "") {
     return override;
@@ -501,12 +541,20 @@ function macSigningIdentity(): string | null {
   if (result.status !== 0) {
     return null;
   }
-  const match = /"(Developer ID Application: [^"]+)"/u.exec(result.stdout);
+  // electron-builder wants the common name without the certificate-type prefix.
+  const match = /"Developer ID Application: ([^"]+)"/u.exec(result.stdout);
   return match === null ? null : match[1];
 }
 
-/** notarytool credentials, as electron-builder expects them in the environment. */
+/**
+ * notarytool credentials. electron-builder reads them from the environment; we
+ * also accept them from signing.local.json so both platforms are configured in
+ * one gitignored file:
+ *
+ *   "mac": { "appleId": "…", "appSpecificPassword": "…", "teamId": "…" }
+ */
 function macNotarizationConfigured(): boolean {
+  applyMacSigningConfiguration();
   const { APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER } =
     process.env;
   const withAppleId =
@@ -514,6 +562,38 @@ function macNotarizationConfigured(): boolean {
   const withApiKey =
     APPLE_API_KEY !== undefined && APPLE_API_KEY_ID !== undefined && APPLE_API_ISSUER !== undefined;
   return withAppleId || withApiKey;
+}
+
+function applyMacSigningConfiguration() {
+  if (!fs.existsSync(signingConfigurationPath)) {
+    return;
+  }
+  let mac: unknown;
+  try {
+    mac = (JSON.parse(fs.readFileSync(signingConfigurationPath, "utf-8")) as { mac?: unknown }).mac;
+  } catch (error) {
+    throw new Error(`read ${path.basename(signingConfigurationPath)}`, { cause: error });
+  }
+  if (typeof mac !== "object" || mac === null) {
+    return;
+  }
+  const configuration = mac as Record<string, unknown>;
+  const assign = (key: string, variable: string) => {
+    const value = configuration[key];
+    if (typeof value === "string" && value !== "" && process.env[variable] === undefined) {
+      process.env[variable] = value;
+    }
+  };
+  assign("appleId", "APPLE_ID");
+  assign("appSpecificPassword", "APPLE_APP_SPECIFIC_PASSWORD");
+  assign("teamId", "APPLE_TEAM_ID");
+  assign("apiKey", "APPLE_API_KEY");
+  assign("apiKeyId", "APPLE_API_KEY_ID");
+  assign("apiIssuer", "APPLE_API_ISSUER");
+  const identity = configuration.identity;
+  if (typeof identity === "string" && identity !== "" && process.env.VPN4TV_MAC_IDENTITY === undefined) {
+    process.env.VPN4TV_MAC_IDENTITY = identity;
+  }
 }
 
 async function packageMac() {
@@ -557,6 +637,9 @@ async function packageMac() {
       architecture.builderArchitectureArgument,
       "--config",
       "electron-builder.yml",
+      // VPN4TV: the native SwiftUI client also installs as VPN4TV.app, and the
+      // one that lands second replaces the other. Only macOS needs the suffix.
+      `--config.productName=${MAC_PRODUCT_NAME}`,
       `--config.extraMetadata.version=${readApplicationVersion()}`,
       ...(identity === null
         ? ["--config.mac.identity=null", "--config.mac.hardenedRuntime=false"]
@@ -566,6 +649,9 @@ async function packageMac() {
       "--publish",
       "never",
     ]);
+    if (notarize && identity !== null) {
+      notarizeDiskImage(identity, architecture.artifactArchitecture);
+    }
   }
 }
 
