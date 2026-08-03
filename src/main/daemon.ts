@@ -7,26 +7,15 @@ import * as net from "node:net";
 import { ManagedService } from "../shared/gen/daemon/managed_service_pb";
 import { StartedService } from "../shared/gen/daemon/started_service_pb";
 import { DesktopService } from "../shared/gen/experimental/boxdd/desktop_service_pb";
-import { developmentSwitchValue } from "./development";
+import { daemonSocketPath } from "./daemonSocket";
 import { localeInterceptor } from "./locale";
 import { daemonWorkerTransport } from "./worker";
 
 let daemonTransport: Transport | null;
-let resolvedSocketPath: string | null = null;
 if (process.platform === "win32" && app.isPackaged) {
   daemonTransport = daemonWorkerTransport;
 } else {
-  const defaultSocketPath =
-    process.platform === "win32"
-      ? "\\\\.\\pipe\\ProtectedPrefix\\Administrators\\sing-box"
-      : process.platform === "linux"
-        ? "/run/sing-box.socket"
-        // VPN4TV: macOS has no /run; the LaunchDaemon listens here.
-        : process.platform === "darwin"
-          ? "/var/run/sing-box.socket"
-          : null;
-  const socketPath = developmentSwitchValue("daemon-socket") || defaultSocketPath;
-  resolvedSocketPath = socketPath || null;
+  const socketPath = daemonSocketPath();
   if (!socketPath) {
     daemonTransport = null;
   } else {
@@ -41,11 +30,6 @@ if (process.platform === "win32" && app.isPackaged) {
 }
 
 export { daemonTransport };
-
-/** Where the daemon listens, so callers can wait for it to come up. */
-export function daemonSocketPath(): string | null {
-  return resolvedSocketPath;
-}
 
 export const desktopService: Client<typeof DesktopService> | null = daemonTransport
   ? createClient(DesktopService, daemonTransport)

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { SETUP_CALL } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
 import { applicationPaths } from "./applicationPaths";
-import { daemonSocketPath } from "./daemon";
+import { daemonSocketPath } from "./daemonSocket";
 
 const EXIT_CODE_CANCELLED = 1223;
 const EXIT_CODE_LAUNCH_FAILED = 1224;
