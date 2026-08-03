@@ -51,8 +51,8 @@ but SmartScreen still warns on first run (*More info → Run anyway*).
 
 ## Building
 
-See [VPN4TV.md](VPN4TV.md) for the full loop: toolchains, running against a
-local daemon, packaging for each platform, code signing and notarisation.
+Requires Node 26, pnpm and a Go toolchain (>= 1.24.7, not go1.27rc1 — the
+daemon build pulls in tailscale, which does not compile there).
 
 ```bash
 pnpm install

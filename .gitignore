@@ -13,3 +13,6 @@ node_modules/
 # VPN4TV: locally built daemon binaries (built by scripts/development.ts)
 /bin/
 /signing.local.pfx
+
+# Internal working notes, deliberately out of the repository
+/VPN4TV.md
