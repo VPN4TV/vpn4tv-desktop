@@ -1,10 +1,12 @@
 import { app, ipcMain } from "electron";
 import { execFile } from "node:child_process";
+import net from "node:net";
 import { join } from "node:path";
 
 import { SETUP_CALL } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
 import { applicationPaths } from "./applicationPaths";
+import { daemonSocketPath } from "./daemon";
 
 const EXIT_CODE_CANCELLED = 1223;
 const EXIT_CODE_LAUNCH_FAILED = 1224;
@@ -251,6 +253,43 @@ export async function runElevatedServiceCommand(
   throw new Error(`service command failed with exit code ${exitCode}`);
 }
 
+const SOCKET_WAIT_TIMEOUT = 20_000;
+const SOCKET_POLL_INTERVAL = 250;
+
+/**
+ * VPN4TV: the elevated command returns as soon as the service manager accepts
+ * the job, but the daemon still has to come up and bind its socket. Without
+ * this wait the reconnect fires against nothing and the next attempt is a
+ * backoff away — long enough that the app looks stuck until it is restarted.
+ */
+function daemonSocketReachable(socketPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ path: socketPath });
+    const finish = (reachable: boolean) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(reachable);
+    };
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.setTimeout(1000, () => finish(false));
+  });
+}
+
+async function waitForDaemonSocket(): Promise<void> {
+  const socketPath = daemonSocketPath();
+  if (socketPath === null) {
+    return;
+  }
+  const deadline = Date.now() + SOCKET_WAIT_TIMEOUT;
+  while (Date.now() < deadline) {
+    if (await daemonSocketReachable(socketPath)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SOCKET_POLL_INTERVAL));
+  }
+}
+
 async function repair(action: "install" | "start", onRepaired: () => void): Promise<boolean> {
   if (!repairSupported) {
     throw new Error("service repair is not supported on this platform");
@@ -266,6 +305,7 @@ async function repair(action: "install" | "start", onRepaired: () => void): Prom
       ? runElevatedDarwin(commandArguments)
       : runElevatedWindows(commandArguments));
   if (exitCode === 0) {
+    await waitForDaemonSocket();
     onRepaired();
     return true;
   }

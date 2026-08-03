@@ -24,6 +24,10 @@ class DaemonState extends EventEmitter {
 
   private started = false;
   private wakeRetry: (() => void) | null = null;
+  // VPN4TV: a retry that arrives while the loop is busy (probing the service
+  // takes seconds) used to be dropped, leaving the user waiting out a backoff
+  // after the service was already installed.
+  private retryRequested = false;
 
   start() {
     if (this.started) {
@@ -38,7 +42,11 @@ class DaemonState extends EventEmitter {
   }
 
   retryConnection() {
-    this.wakeRetry?.();
+    if (this.wakeRetry === null) {
+      this.retryRequested = true;
+      return;
+    }
+    this.wakeRetry();
   }
 
   private setConnection(connection: DaemonConnectionState) {
@@ -48,6 +56,10 @@ class DaemonState extends EventEmitter {
   }
 
   private interruptibleSleep(durationMs: number): Promise<void> {
+    if (this.retryRequested) {
+      this.retryRequested = false;
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.wakeRetry = null;

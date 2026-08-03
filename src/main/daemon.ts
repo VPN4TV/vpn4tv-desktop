@@ -12,6 +12,7 @@ import { localeInterceptor } from "./locale";
 import { daemonWorkerTransport } from "./worker";
 
 let daemonTransport: Transport | null;
+let resolvedSocketPath: string | null = null;
 if (process.platform === "win32" && app.isPackaged) {
   daemonTransport = daemonWorkerTransport;
 } else {
@@ -25,6 +26,7 @@ if (process.platform === "win32" && app.isPackaged) {
           ? "/var/run/sing-box.socket"
           : null;
   const socketPath = developmentSwitchValue("daemon-socket") || defaultSocketPath;
+  resolvedSocketPath = socketPath || null;
   if (!socketPath) {
     daemonTransport = null;
   } else {
@@ -39,6 +41,11 @@ if (process.platform === "win32" && app.isPackaged) {
 }
 
 export { daemonTransport };
+
+/** Where the daemon listens, so callers can wait for it to come up. */
+export function daemonSocketPath(): string | null {
+  return resolvedSocketPath;
+}
 
 export const desktopService: Client<typeof DesktopService> | null = daemonTransport
   ? createClient(DesktopService, daemonTransport)
