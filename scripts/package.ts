@@ -725,6 +725,9 @@ async function packageLinux() {
 
 async function main(): Promise<void> {
   console.info(`[package] SOURCE_DATE_EPOCH=${sourceDateEpoch}`);
+  // A circular import throws at startup on whichever platform reaches the
+  // module-scope read, so it must never reach a package.
+  runChecked("node", ["scripts/check-cycles.mjs"]);
   verifyGoVersion();
   if (packageMode !== "win-architecture") {
     ensureGenerated();

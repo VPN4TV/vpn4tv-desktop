@@ -16,6 +16,9 @@ cd "$(dirname "$0")/.."
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
+echo "==> checking for circular imports"
+node scripts/check-cycles.mjs
+
 echo "==> installing a throwaway TypeScript toolchain in $OUT"
 npm install --silent --prefix "$OUT" typescript@5.7 @types/node@22 >/dev/null
 

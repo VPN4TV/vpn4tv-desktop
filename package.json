@@ -39,7 +39,8 @@
     "package:linux:rpm": "tsx scripts/package.ts linux rpm",
     "package:linux:pacman": "tsx scripts/package.ts linux pacman",
     "postinstall": "electron-builder install-app-deps",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "check:cycles": "node scripts/check-cycles.mjs"
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.71.0",
