@@ -78,7 +78,7 @@ function handleFatal(kind: string, error: unknown): never {
   const capture = captureRuntimeCrash(kind, error);
   const message = fatalErrorMessage(error, capture);
   try {
-    dialog.showErrorBox("sing-box", message);
+    dialog.showErrorBox("VPN4TV", message);
   } catch (dialogError) {
     process.stderr.write(`${message}\n\nFailed to show the error dialog: ${String(dialogError)}\n`);
   }

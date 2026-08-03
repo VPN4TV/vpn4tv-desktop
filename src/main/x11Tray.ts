@@ -42,7 +42,7 @@ function iconPixmaps(): IconPixmap[] {
 class StatusNotifierItem extends dbus.interface.Interface {
   readonly Category = "ApplicationStatus";
   readonly Id = "sing-box";
-  readonly Title = "sing-box";
+  readonly Title = "VPN4TV";
   readonly Status = "Active";
   readonly WindowId = 0;
   readonly IconName = "";
@@ -52,7 +52,7 @@ class StatusNotifierItem extends dbus.interface.Interface {
   readonly AttentionIconName = "";
   readonly AttentionIconPixmap: IconPixmap[] = [];
   readonly AttentionMovieName = "";
-  readonly ToolTip: ToolTip = ["", [], "sing-box", ""];
+  readonly ToolTip: ToolTip = ["", [], "VPN4TV", ""];
   readonly IconThemePath = "";
   readonly Menu = "/NO_DBUSMENU";
   readonly ItemIsMenu = false;

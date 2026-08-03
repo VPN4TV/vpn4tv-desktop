@@ -96,7 +96,7 @@ function groupsSubmenu(): MenuItemConstructorOptions[] {
 function buildTrayTemplate(): MenuItemConstructorOptions[] {
   const started = daemonState.status === ServiceStatus_Type.STARTED;
   const { selectedId, profiles } = profilesState();
-  const template: MenuItemConstructorOptions[] = [{ label: "sing-box", enabled: false }];
+  const template: MenuItemConstructorOptions[] = [{ label: "VPN4TV", enabled: false }];
   if (started) {
     template.push({
       label: translate("Stop"),
@@ -165,7 +165,7 @@ function createElectronTray() {
     );
   }
   tray = new Tray(icon);
-  tray.setToolTip("sing-box");
+  tray.setToolTip("VPN4TV");
   if (process.platform === "win32") {
     prepareTrayMenuWindow(tray.getBounds());
     const popMenu = (bounds: Rectangle) => {
