@@ -1651,7 +1651,43 @@ FunctionEnd
   ${endif}
 !macroend
 
+!macro registerUrlScheme SCHEME
+  WriteRegStr SHELL_CONTEXT "Software\\Classes\\${SCHEME}" "" "URL:${SCHEME}"
+  WriteRegStr SHELL_CONTEXT "Software\\Classes\\${SCHEME}" "URL Protocol" ""
+  WriteRegStr SHELL_CONTEXT "Software\\Classes\\${SCHEME}\\DefaultIcon" "" "$INSTDIR\\${APP_EXECUTABLE_FILENAME},0"
+  WriteRegStr SHELL_CONTEXT "Software\\Classes\\${SCHEME}\\shell\\open\\command" "" '"$INSTDIR\\${APP_EXECUTABLE_FILENAME}" "%1"'
+!macroend
+
+!macro unregisterUrlScheme SCHEME
+  DeleteRegKey SHELL_CONTEXT "Software\\Classes\\${SCHEME}"
+!macroend
+
+!macro registerVpn4tvUrlSchemes
+  !insertmacro registerUrlScheme "vpn4tv"
+  !insertmacro registerUrlScheme "sing-box"
+  !insertmacro registerUrlScheme "vless"
+  !insertmacro registerUrlScheme "vmess"
+  !insertmacro registerUrlScheme "trojan"
+  !insertmacro registerUrlScheme "ss"
+  !insertmacro registerUrlScheme "hysteria2"
+  !insertmacro registerUrlScheme "hy2"
+  !insertmacro registerUrlScheme "tuic"
+!macroend
+
+!macro unregisterVpn4tvUrlSchemes
+  !insertmacro unregisterUrlScheme "vpn4tv"
+  !insertmacro unregisterUrlScheme "sing-box"
+  !insertmacro unregisterUrlScheme "vless"
+  !insertmacro unregisterUrlScheme "vmess"
+  !insertmacro unregisterUrlScheme "trojan"
+  !insertmacro unregisterUrlScheme "ss"
+  !insertmacro unregisterUrlScheme "hysteria2"
+  !insertmacro unregisterUrlScheme "hy2"
+  !insertmacro unregisterUrlScheme "tuic"
+!macroend
+
 !macro customInstall
+  !insertmacro registerVpn4tvUrlSchemes
   !insertmacro daemonExecutable $0
   SetDetailsPrint both
   DetailPrint "$(registeringService)"
@@ -1821,6 +1857,7 @@ FunctionEnd
 !macroend
 
 !macro customUnInstall
+  !insertmacro unregisterVpn4tvUrlSchemes
   SetDetailsPrint both
   ${ifNot} ${isUpdated}
     !insertmacro daemonExecutable $0
