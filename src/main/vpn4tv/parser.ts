@@ -34,6 +34,9 @@ export interface ProxyConfig {
   xrayOutbound?: Json;
   /** Original ss:// URI, for Outline's SIP002 prefix support. */
   outlineUrl?: string;
+  /** Outline dynamic key (ssconf://). Resolved before every connect, because
+   *  the provider rotates servers behind it — that is the whole point of it. */
+  outlineDynamicUrl?: string;
   /** wg-quick / AmneziaWG INI. */
   awgIni?: string;
 }
@@ -73,6 +76,7 @@ export function parseLine(line: string): ProxyConfig | null {
   if (value.startsWith("hysteria2://") || value.startsWith("hy2://")) return parseHysteria2(value);
   if (value.startsWith("trojan://")) return parseTrojan(value);
   if (value.startsWith("ss://")) return parseShadowsocks(value);
+  if (value.startsWith("ssconf://")) return parseOutlineDynamicKey(value);
   if (value.startsWith("naive+https://") || value.startsWith("naive+quic://")) return parseNaive(value);
   if (value.startsWith("wg://")) return parseWgUri(value);
   return null;
@@ -294,6 +298,33 @@ function parseTrojan(uri: string): ProxyConfig | null {
 }
 
 // ---- NAIVE ----
+
+/**
+ * Outline dynamic access key. Nothing to resolve here — the URL is carried into
+ * the profile and fetched at connect time, so a rotated server is picked up.
+ */
+function parseOutlineDynamicKey(value: string): ProxyConfig | null {
+  const withoutFragment = value.split("#")[0];
+  const httpsUrl = "https://" + withoutFragment.slice("ssconf://".length);
+  let host: string;
+  try {
+    host = new URL(httpsUrl).hostname;
+  } catch {
+    return null;
+  }
+  if (host === "") {
+    return null;
+  }
+  const tag = decodeURIComponent(value.split("#")[1] ?? "") || host;
+  return {
+    tag,
+    type: "shadowsocks",
+    server: host,
+    serverPort: 0,
+    outbound: {},
+    outlineDynamicUrl: httpsUrl,
+  };
+}
 
 function parseNaive(uri: string): ProxyConfig | null {
   const isQuic = uri.startsWith("naive+quic://");

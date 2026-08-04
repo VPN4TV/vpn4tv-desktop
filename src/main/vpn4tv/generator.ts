@@ -80,14 +80,20 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
     proxy.outbound = socksLoopback(proxy.tag, port);
   }
 
-  // outline-managed (ss SIP002 with a prefix)
-  const outlineUrls: string[] = [];
+  // outline-managed (ss SIP002 with a prefix, or a dynamic ssconf:// key)
+  const outlineUrls: { url?: string; dynamicUrl?: string }[] = [];
   for (const proxy of proxies) {
+    if (proxy.outlineDynamicUrl) {
+      const dynamicPort = BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset + outlineUrls.length;
+      outlineUrls.push({ dynamicUrl: proxy.outlineDynamicUrl });
+      proxy.outbound = socksLoopback(proxy.tag, dynamicPort);
+      continue;
+    }
     if (!proxy.outlineUrl) {
       continue;
     }
     const port = BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset + outlineUrls.length;
-    outlineUrls.push(proxy.outlineUrl);
+    outlineUrls.push({ url: proxy.outlineUrl });
     proxy.outbound = socksLoopback(proxy.tag, port);
   }
 
@@ -133,7 +139,7 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
   }
   if (outlineUrls.length > 0) {
     bridges.outline = buildEndpointConfig(
-      outlineUrls.map((url) => ({ url })),
+      outlineUrls,
       BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset,
     );
   }

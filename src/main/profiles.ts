@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import { pickApplication, runningApplications } from "./vpn4tv/applications";
 import { decodeVpn4tvLink } from "./vpn4tv/parser";
 import { injectProbedDns, probeDns } from "./vpn4tv/dns";
+import { hasDynamicOutlineKeys, resolveDynamicOutlineKeys } from "./vpn4tv/outlineDynamic";
 import {
   convertSubscription,
   hwid,
@@ -349,9 +350,21 @@ async function encodeProfileData(id: string): Promise<Uint8Array> {
   return encoded.data;
 }
 
-async function startServiceWithContent(content: string): Promise<void> {
+async function startServiceWithContent(content: string, profileId?: string): Promise<void> {
   if (desktopService === null) {
     throw new Error("daemon is not available");
+  }
+  // VPN4TV: Outline dynamic keys are meant to be fetched by the client before
+  // connecting — the provider rotates servers behind them. The resolved key is
+  // written back, so the next start still works when the key host is blocked.
+  if (hasDynamicOutlineKeys(content)) {
+    const resolved = await resolveDynamicOutlineKeys(content);
+    if (resolved !== content) {
+      content = resolved;
+      if (profileId !== undefined) {
+        await atomicWriteFile(contentPath(profileId), resolved).catch(() => {});
+      }
+    }
   }
   // VPN4TV: pick a resolver that is actually reachable on this network before
   // handing the config over — Russian ISPs kill DoH providers in waves, and the
@@ -370,7 +383,7 @@ async function reloadIfSelectedAndRunning(id: string): Promise<void> {
   if (daemonState.status !== ServiceStatus_Type.STARTED) {
     return;
   }
-  await startServiceWithContent(await readFile(contentPath(id), "utf-8"));
+  await startServiceWithContent(await readFile(contentPath(id), "utf-8"), id);
 }
 
 function intervalOrDefault(profile: ProfileMetadata): number {
@@ -447,7 +460,7 @@ export async function startSelectedProfile(): Promise<void> {
     throw new Error("no profile selected");
   }
   const content = await readFile(contentPath(selectedId), "utf-8");
-  await startServiceWithContent(content);
+  await startServiceWithContent(content, selectedId);
 }
 
 let updateTimer: NodeJS.Timeout | null = null;

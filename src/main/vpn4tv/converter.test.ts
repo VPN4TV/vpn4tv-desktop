@@ -309,6 +309,23 @@ test("vpn4tv:// links unwrap to whatever they carry", () => {
   assert.equal(decodeVpn4tvLink("vpn4tv://" + Buffer.from("hello").toString("base64")), null);
 });
 
+test("ssconf:// is carried into the profile, not resolved at import", () => {
+  const proxies = parseSubscription("ssconf://keys.example.com/abc123#Outline");
+  assert.equal(proxies.length, 1);
+  assert.equal(proxies[0].outlineDynamicUrl, "https://keys.example.com/abc123");
+  assert.equal(proxies[0].tag, "Outline");
+  // No static key is invented — that is the client's job at connect time.
+  assert.equal(proxies[0].outlineUrl, undefined);
+
+  const config = JSON.parse(generateConfig(proxies));
+  const endpoints = config[BRIDGE_CONFIG_KEY].outline.endpoints as any[];
+  assert.equal(endpoints.length, 1);
+  assert.equal(endpoints[0].dynamicUrl, "https://keys.example.com/abc123");
+  // The outbound still points at the bridge, so routing works before the fetch.
+  const outbound = (config.outbounds as any[]).find((o) => o.tag === "Outline");
+  assert.equal(outbound.type, "socks");
+});
+
 test("empty input is rejected", () => {
   assert.throws(() => generateConfig([]), NoProxiesError);
   assert.deepEqual(parseSubscription("   \n # comment\n"), []);
