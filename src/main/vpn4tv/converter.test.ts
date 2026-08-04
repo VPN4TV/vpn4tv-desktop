@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { deflateSync } from "node:zlib";
 
 import { BRIDGE_CONFIG_KEY, BRIDGE_PORTS, NoProxiesError, generateConfig } from "./generator";
-import { parseSubscription, resetLastDns } from "./parser";
+import { decodeVpn4tvLink, parseSubscription, resetLastDns } from "./parser";
 
 function parseGenerated(proxies: Parameters<typeof generateConfig>[0]): Record<string, any> {
   return JSON.parse(generateConfig(proxies));
@@ -283,6 +283,30 @@ test("split tunnelling by application", () => {
     (empty.route.rules as any[]).some((rule) => rule.process_name !== undefined),
     false,
   );
+});
+
+test("vpn4tv:// links unwrap to whatever they carry", () => {
+  const keys =
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&sni=a#A\n" +
+    "vless://11111111-2222-3333-4444-555555555555@b.example.com:443?security=tls&sni=b#B";
+  const wrap = (payload: string) =>
+    "vpn4tv://" + Buffer.from(payload).toString("base64url");
+
+  // Server links inside are parsed exactly as if they had been pasted.
+  const proxies = parseSubscription(wrap(keys));
+  assert.deepEqual(proxies.map((proxy) => proxy.tag), ["A", "B"]);
+
+  // base64url: "-" and "_" must survive, and a #name is not part of the payload.
+  assert.equal(decodeVpn4tvLink(wrap("https://example.com/sub?a=1") + "#My%20VPN"),
+    "https://example.com/sub?a=1");
+
+  // A subscription URL comes back intact, so the caller can keep it remote.
+  assert.equal(decodeVpn4tvLink(wrap("https://example.com/sub")), "https://example.com/sub");
+
+  // Not ours, or undecodable, or decodes to noise → null, so callers fall through.
+  assert.equal(decodeVpn4tvLink("vless://x@y:443#Z"), null);
+  assert.equal(decodeVpn4tvLink("vpn4tv://"), null);
+  assert.equal(decodeVpn4tvLink("vpn4tv://" + Buffer.from("hello").toString("base64")), null);
 });
 
 test("empty input is rejected", () => {

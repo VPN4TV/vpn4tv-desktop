@@ -4,6 +4,7 @@ import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/pr
 import { basename, join } from "node:path";
 
 import { pickApplication, runningApplications } from "./vpn4tv/applications";
+import { decodeVpn4tvLink } from "./vpn4tv/parser";
 import { injectProbedDns, probeDns } from "./vpn4tv/dns";
 import {
   convertSubscription,
@@ -764,7 +765,9 @@ const handlers: Record<
  * converted once into a local one.
  */
 export async function importPastedContent(name: string, text: string): Promise<string> {
-  const trimmed = text.trim();
+  // vpn4tv:// wraps whatever the user would otherwise paste — unwrap before
+  // deciding whether this is a subscription to keep updating or a one-off.
+  const trimmed = (decodeVpn4tvLink(text) ?? text).trim();
   const profile = await createProfile(
     /^https?:\/\/\S+$/iu.test(trimmed)
       ? { name, type: "remote", remoteUrl: trimmed, autoUpdate: true }

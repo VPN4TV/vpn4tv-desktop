@@ -78,8 +78,42 @@ export function parseLine(line: string): ProxyConfig | null {
   return null;
 }
 
+/**
+ * VPN4TV: our own link — `vpn4tv://<base64url payload>`, optionally with a
+ * `#name` fragment. The payload is whatever we would otherwise ask the user to
+ * paste: a subscription URL, server links, or a config. base64url, because `+`
+ * and `/` do not survive being put in a link.
+ *
+ * Returns null when this is not our link or the payload is not decodable, so
+ * callers can fall through to the normal handling.
+ */
+export function decodeVpn4tvLink(content: string): string | null {
+  const match = /^vpn4tv:\/\/(.+)$/isu.exec(content.trim());
+  if (match === null) {
+    return null;
+  }
+  const fragment = match[1].indexOf("#");
+  const payload = (fragment === -1 ? match[1] : match[1].slice(0, fragment)).trim();
+  if (payload === "") {
+    return null;
+  }
+  let decoded: string;
+  try {
+    decoded = Buffer.from(payload.replace(/-/gu, "+").replace(/_/gu, "/"), "base64").toString("utf-8");
+  } catch {
+    return null;
+  }
+  decoded = decoded.trim();
+  // Base64 decoding never fails loudly, so check the result looks like content
+  // we could actually use rather than accepting noise.
+  const usable = decoded.includes("://") || decoded.startsWith("{");
+  return usable ? decoded : null;
+}
+
 export function parseSubscription(content: string): ProxyConfig[] {
-  const trimmed = content.trim();
+  // Our own link carries the real payload; everything below works on that.
+  const source = decodeVpn4tvLink(content) ?? content;
+  const trimmed = source.trim();
 
   // AmneziaVPN vpn:// (base64url + 4-byte length + zlib JSON)
   if (trimmed.startsWith("vpn://") || looksLikeAmneziaVpn(trimmed)) {
@@ -111,7 +145,7 @@ export function parseSubscription(content: string): ProxyConfig[] {
   }
 
   // base64-wrapped subscription, else newline-separated URIs
-  const decoded = tryBase64Subscription(content) ?? content;
+  const decoded = tryBase64Subscription(source) ?? source;
   return decoded
     .split(/[\r\n]+/)
     .map(parseLine)
