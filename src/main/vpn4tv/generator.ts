@@ -324,6 +324,13 @@ function buildXrayConfig(xrayOutbounds: Json[]): Json {
 
 function buildEndpointConfig(entries: Array<Record<string, string>>, firstPort: number): Json {
   return {
-    endpoints: entries.map((entry, index) => ({ ...entry, port: firstPort + index })),
+    // The bridges bind 127.0.0.127 by default — fine on Android and Linux, which
+    // have all of 127.0.0.0/8, but macOS and Windows only assign 127.0.0.1 and
+    // the listener fails with "can't assign requested address".
+    endpoints: entries.map((entry, index) => ({
+      ...entry,
+      port: firstPort + index,
+      listen: BRIDGE_PORTS.socksHost,
+    })),
   };
 }

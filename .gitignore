@@ -16,3 +16,6 @@ node_modules/
 
 # Internal working notes, deliberately out of the repository
 /VPN4TV.md
+
+# VPN4TV: local release helper (carries no secrets, but is machine-specific)
+/scripts/release.local.sh
