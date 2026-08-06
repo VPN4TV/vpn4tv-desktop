@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { deflateSync } from "node:zlib";
 
 import { BRIDGE_CONFIG_KEY, BRIDGE_PORTS, NoProxiesError, generateConfig } from "./generator";
+import { stripTunIPv6 } from "./ipv6";
 import { decodeVpn4tvLink, parseSubscription, resetLastDns } from "./parser";
 
 function parseGenerated(proxies: Parameters<typeof generateConfig>[0]): Record<string, any> {
@@ -324,6 +325,31 @@ test("ssconf:// is carried into the profile, not resolved at import", () => {
   // The outbound still points at the bridge, so routing works before the fetch.
   const outbound = (config.outbounds as any[]).find((o) => o.tag === "Outline");
   assert.equal(outbound.type, "socks");
+});
+
+test("a machine without IPv6 gets an IPv4-only tunnel", () => {
+  const [proxy] = parseSubscription(
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&sni=a#A",
+  );
+  const profile = generateConfig([proxy]);
+  const before = JSON.parse(profile);
+  assert.equal((before.inbounds[0].address as string[]).length, 2, "profile is dual-stack to begin with");
+
+  const stripped = JSON.parse(stripTunIPv6(profile));
+  assert.deepEqual(stripped.inbounds[0].address, ["172.19.0.1/30"]);
+  // The fake-IP pool must not hand out AAAA answers either.
+  const fakeip = (stripped.dns.servers as any[]).find((s) => s.type === "fakeip");
+  if (fakeip !== undefined) {
+    assert.equal(fakeip.inet6_range, undefined);
+    assert.ok(fakeip.inet4_range, "the IPv4 pool stays");
+  }
+  // Everything else is left alone.
+  assert.equal(stripped.inbounds[0].auto_route, before.inbounds[0].auto_route);
+  assert.deepEqual(stripped.outbounds, before.outbounds);
+
+  // Nothing to strip → the exact same string back, so this is safe every start.
+  assert.equal(stripTunIPv6(stripTunIPv6(profile)), stripTunIPv6(profile));
+  assert.equal(stripTunIPv6("not json"), "not json");
 });
 
 test("empty input is rejected", () => {

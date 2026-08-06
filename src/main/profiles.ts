@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import { pickApplication, runningApplications } from "./vpn4tv/applications";
 import { decodeVpn4tvLink } from "./vpn4tv/parser";
 import { injectProbedDns, probeDns } from "./vpn4tv/dns";
+import { applyIPv6Support } from "./vpn4tv/ipv6";
 import { hasDynamicOutlineKeys, resolveDynamicOutlineKeys } from "./vpn4tv/outlineDynamic";
 import {
   convertSubscription,
@@ -370,8 +371,10 @@ async function startServiceWithContent(content: string, profileId?: string): Pro
   // handing the config over — Russian ISPs kill DoH providers in waves, and the
   // one baked into the profile may be dead. Best effort: the probe never blocks
   // a connect for more than a few seconds and leaves the config alone on failure.
+  // A machine with IPv6 switched off cannot take the tunnel's IPv6 address, and
+  // the start aborts with "set ipv6 address: Element not found".
   await desktopService.startService({
-    configContent: injectProbedDns(content, await probeDns()),
+    configContent: applyIPv6Support(injectProbedDns(content, await probeDns())),
     options: await oomStartOptions(),
   });
 }
