@@ -9,6 +9,9 @@ StateDirectory=sing-box-daemon
 StateDirectoryMode=0700
 UMask=0077
 ExecStart=/opt/VPN4TV/resources/daemon/sing-box-daemon run --working-directory /var/lib/sing-box-daemon --socket /run/sing-box.socket
+# Same reason as the launchd job: the default descriptor limit is far too low
+# for a tunnel with the bridges running alongside it.
+LimitNOFILE=65536
 Restart=always
 RestartSec=5
 
