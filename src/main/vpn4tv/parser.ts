@@ -848,6 +848,18 @@ function buildXrayVlessOutbound(input: XrayVlessInput): Json {
         xhttp[key] = value;
       }
     }
+    // `extra` carries the rest of the transport settings — xmux above all, which
+    // decides how many connections the client multiplexes over. xray-core
+    // unmarshals it into the transport config itself and then re-applies host,
+    // path and mode, so it is passed through as an object rather than merged
+    // here. Dropping it, as we used to, silently ignored the provider's tuning.
+    const extra = input.query.extra;
+    if (extra !== undefined) {
+      const parsed = parseJsonObject(extra);
+      if (parsed !== null) {
+        xhttp.extra = parsed;
+      }
+    }
     stream.xhttpSettings = xhttp;
   }
   return {

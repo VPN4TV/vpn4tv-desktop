@@ -352,6 +352,29 @@ test("a machine without IPv6 gets an IPv4-only tunnel", () => {
   assert.equal(stripTunIPv6("not json"), "not json");
 });
 
+test("xhttp carries the provider's extra settings through to xray", () => {
+  const extra = encodeURIComponent(JSON.stringify({ xmux: { maxConnections: 1, cMaxReuseTimes: 0 } }));
+  const proxies = parseSubscription(
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443" +
+      `?encryption=none&type=xhttp&path=%2Fabc&mode=stream-one&extra=${extra}` +
+      "&security=tls&sni=a.example.com&fp=chrome#X",
+  );
+  assert.equal(proxies.length, 1);
+  const settings = (proxies[0].xrayOutbound as any).streamSettings.xhttpSettings;
+  assert.equal(settings.path, "/abc");
+  assert.equal(settings.mode, "stream-one");
+  // xray-core unmarshals `extra` itself, so it travels as an object, untouched.
+  assert.deepEqual(settings.extra, { xmux: { maxConnections: 1, cMaxReuseTimes: 0 } });
+
+  // Malformed extra must not cost the user the whole server.
+  const broken = parseSubscription(
+    "vless://11111111-2222-3333-4444-555555555555@a.example.com:443" +
+      "?encryption=none&type=xhttp&path=%2Fabc&extra=not-json&security=tls&sni=a#X",
+  );
+  assert.equal(broken.length, 1);
+  assert.equal((broken[0].xrayOutbound as any).streamSettings.xhttpSettings.extra, undefined);
+});
+
 test("empty input is rejected", () => {
   assert.throws(() => generateConfig([]), NoProxiesError);
   assert.deepEqual(parseSubscription("   \n # comment\n"), []);
