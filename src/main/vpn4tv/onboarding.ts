@@ -32,6 +32,11 @@ export function deviceHeaders(identity: DeviceIdentity): Record<string, string> 
     "x-hwid": identity.hwid,
     "x-device-os": "desktop",
     "x-ver-os": identity.version,
+    // The app version in its own header: the backend decides what it may serve
+    // from it (naive needs a client that sets route.default_domain_resolver,
+    // xhttp one that passes the transport's extra through), and x-ver-os means
+    // the OS version on Android, so it cannot carry both.
+    "x-app-ver": identity.version,
     "User-Agent": `VPN4TV-Desktop/${identity.version}`,
   };
 }
