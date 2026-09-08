@@ -50,6 +50,24 @@ test("vless xhttp goes through the xray bridge", () => {
   assert.equal(config[BRIDGE_CONFIG_KEY].xray.inbounds[0].port, BRIDGE_PORTS.base);
 });
 
+test("olcrtc: the link goes to the bridge whole, the comment names the server", () => {
+  const key = "0123456789abcdef".repeat(4);
+  const link = `olcrtc://jitsi?datachannel@https://meet.example.org/room-42#${key}$RU%20/%20whitelist`;
+  const [proxy] = parseSubscription(link);
+  assert.equal(proxy.type, "olcrtc");
+  assert.equal(proxy.tag, "RU / whitelist");
+  assert.equal(proxy.server, "meet.example.org");
+  assert.equal(proxy.olcrtcUrl, link);
+  const config = parseGenerated([proxy]);
+  const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "RU / whitelist");
+  assert.equal(outbound.type, "socks");
+  assert.equal(outbound.server_port, BRIDGE_PORTS.base + BRIDGE_PORTS.olcrtcOffset);
+  assert.equal(config[BRIDGE_CONFIG_KEY].olcrtc.endpoints[0].url, link);
+  assert.equal(config[BRIDGE_CONFIG_KEY].olcrtc.endpoints[0].listen, BRIDGE_PORTS.socksHost);
+  // A link without a valid key is not a server.
+  assert.equal(parseSubscription("olcrtc://jitsi?datachannel@https://meet.example.org/r#short").length, 0);
+});
+
 test("shadowsocks: plain is native, prefixed goes to the outline bridge", () => {
   const userInfo = Buffer.from("aes-256-gcm:secret", "utf8").toString("base64");
   const [plain] = parseSubscription(`ss://${userInfo}@1.2.3.4:8388#Plain`);

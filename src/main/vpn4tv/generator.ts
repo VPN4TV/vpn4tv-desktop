@@ -20,6 +20,7 @@ export const BRIDGE_PORTS = {
   base: 42890, // xray bucket
   outlineOffset: 1000, // outline bucket = base + 1000
   wireguardOffset: 2000, // wireproxy bucket = base + 2000
+  olcrtcOffset: 3000, // olcrtc bucket = base + 3000
 } as const;
 
 /** Config key the core strips and interprets (must match vpn4tvbridge.Key). */
@@ -108,6 +109,18 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
     proxy.outbound = { ...socksLoopback(proxy.tag, port), domain_strategy: "ipv4_only" };
   }
 
+  // olcRTC: the link goes to the bridge whole; sing-box resolves before CONNECT,
+  // the far end only dials what the SOCKS request names.
+  const olcrtcUrls: string[] = [];
+  for (const proxy of proxies) {
+    if (!proxy.olcrtcUrl) {
+      continue;
+    }
+    const port = BRIDGE_PORTS.base + BRIDGE_PORTS.olcrtcOffset + olcrtcUrls.length;
+    olcrtcUrls.push(proxy.olcrtcUrl);
+    proxy.outbound = { ...socksLoopback(proxy.tag, port), domain_strategy: "ipv4_only" };
+  }
+
   dedupeTags(proxies);
 
   const fakeDns = options.fakeDns !== false && fakeDnsPossible(proxies);
@@ -147,6 +160,12 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
     bridges.wireproxy = buildEndpointConfig(
       wireguardInis.map((ini) => ({ ini })),
       BRIDGE_PORTS.base + BRIDGE_PORTS.wireguardOffset,
+    );
+  }
+  if (olcrtcUrls.length > 0) {
+    bridges.olcrtc = buildEndpointConfig(
+      olcrtcUrls.map((url) => ({ url })),
+      BRIDGE_PORTS.base + BRIDGE_PORTS.olcrtcOffset,
     );
   }
   if (Object.keys(bridges).length > 0) {
@@ -189,7 +208,9 @@ function dedupeTags(proxies: ProxyConfig[]): void {
 }
 
 function allTcpBridged(proxies: ProxyConfig[]): boolean {
-  return proxies.every((proxy) => proxy.outlineUrl !== undefined || proxy.awgIni !== undefined);
+  return proxies.every(
+    (proxy) => proxy.outlineUrl !== undefined || proxy.awgIni !== undefined || proxy.olcrtcUrl !== undefined,
+  );
 }
 
 /** All-TCP-bridged profiles resolve upstream, so fakeip has nothing to do. */

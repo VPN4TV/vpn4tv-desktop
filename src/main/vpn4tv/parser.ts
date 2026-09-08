@@ -39,6 +39,9 @@ export interface ProxyConfig {
   outlineDynamicUrl?: string;
   /** wg-quick / AmneziaWG INI. */
   awgIni?: string;
+  /** olcRTC link (olcrtc://): TCP over a WebRTC "call" on a whitelisted meeting
+   *  service. The core parses the link itself; we only carry it. */
+  olcrtcUrl?: string;
 }
 
 export interface SubscriptionDns {
@@ -79,7 +82,49 @@ export function parseLine(line: string): ProxyConfig | null {
   if (value.startsWith("ssconf://")) return parseOutlineDynamicKey(value);
   if (value.startsWith("naive+https://") || value.startsWith("naive+quic://")) return parseNaive(value);
   if (value.startsWith("wg://")) return parseWgUri(value);
+  if (value.startsWith("olcrtc://")) return parseOlcrtc(value);
   return null;
+}
+
+/**
+ * olcrtc://<provider>?<transport>[<params>]@<room>#<key>$<comment>
+ *
+ * Only the comment is needed here — for the tag — and the link goes to the
+ * bridge whole. The room is a URL for Jitsi, so it is not a real URI and the
+ * generic parser must not touch it.
+ */
+function parseOlcrtc(uri: string): ProxyConfig | null {
+  const body = uri.slice("olcrtc://".length);
+  const dollar = body.lastIndexOf("$");
+  const comment = dollar >= 0 ? safeDecode(body.slice(dollar + 1)).trim() : "";
+  const withoutComment = dollar >= 0 ? body.slice(0, dollar) : body;
+  const hash = withoutComment.lastIndexOf("#");
+  const question = withoutComment.indexOf("?");
+  const at = withoutComment.indexOf("@");
+  if (question <= 0 || at < question || hash < at) {
+    return null;
+  }
+  const provider = withoutComment.slice(0, question).toLowerCase();
+  const room = withoutComment.slice(at + 1, hash);
+  const key = withoutComment.slice(hash + 1);
+  if (room.length === 0 || !/^[0-9a-fA-F]{64}$/u.test(key)) {
+    return null;
+  }
+  let server = room;
+  try {
+    server = new URL(room).hostname || room;
+  } catch {
+    // A room id rather than a URL (Telemost, WB Stream) — keep it as is.
+  }
+  return { tag: comment || `olcRTC ${provider}`, type: "olcrtc", server, serverPort: 0, outbound: {}, olcrtcUrl: uri };
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 /**
