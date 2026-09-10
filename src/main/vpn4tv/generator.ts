@@ -21,6 +21,7 @@ export const BRIDGE_PORTS = {
   outlineOffset: 1000, // outline bucket = base + 1000
   wireguardOffset: 2000, // wireproxy bucket = base + 2000
   olcrtcOffset: 3000, // olcrtc bucket = base + 3000
+  trusttunnelOffset: 4000, // trusttunnel bucket = base + 4000
 } as const;
 
 /** Config key the core strips and interprets (must match vpn4tvbridge.Key). */
@@ -121,6 +122,17 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
     proxy.outbound = { ...socksLoopback(proxy.tag, port), domain_strategy: "ipv4_only" };
   }
 
+  // TrustTunnel: the official client next to the daemon, one per link.
+  const ttUrls: string[] = [];
+  for (const proxy of proxies) {
+    if (!proxy.ttUrl) {
+      continue;
+    }
+    const port = BRIDGE_PORTS.base + BRIDGE_PORTS.trusttunnelOffset + ttUrls.length;
+    ttUrls.push(proxy.ttUrl);
+    proxy.outbound = { ...socksLoopback(proxy.tag, port), domain_strategy: "ipv4_only" };
+  }
+
   dedupeTags(proxies);
 
   const fakeDns = options.fakeDns !== false && fakeDnsPossible(proxies);
@@ -168,6 +180,12 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
       BRIDGE_PORTS.base + BRIDGE_PORTS.olcrtcOffset,
     );
   }
+  if (ttUrls.length > 0) {
+    bridges.trusttunnel = buildEndpointConfig(
+      ttUrls.map((url) => ({ url })),
+      BRIDGE_PORTS.base + BRIDGE_PORTS.trusttunnelOffset,
+    );
+  }
   if (Object.keys(bridges).length > 0) {
     config[BRIDGE_CONFIG_KEY] = bridges;
   }
@@ -209,7 +227,11 @@ function dedupeTags(proxies: ProxyConfig[]): void {
 
 function allTcpBridged(proxies: ProxyConfig[]): boolean {
   return proxies.every(
-    (proxy) => proxy.outlineUrl !== undefined || proxy.awgIni !== undefined || proxy.olcrtcUrl !== undefined,
+    (proxy) =>
+      proxy.outlineUrl !== undefined ||
+      proxy.awgIni !== undefined ||
+      proxy.olcrtcUrl !== undefined ||
+      proxy.ttUrl !== undefined,
   );
 }
 

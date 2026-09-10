@@ -19,3 +19,4 @@ node_modules/
 
 # VPN4TV: local release helper (carries no secrets, but is machine-specific)
 /scripts/release.local.sh
+.cache/

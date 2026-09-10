@@ -225,6 +225,76 @@ function stageWindowsCronetLibrary(
   fs.chmodSync(destinationPath, 0o644);
 }
 
+/**
+ * VPN4TV: the TrustTunnel client ships next to the daemon. It is C++/Rust, so
+ * it cannot be built into the daemon like the other bridges; the official
+ * release binary is fetched once (pinned version and checksum) and staged
+ * into bin/ for electron-builder. The daemon looks for it beside itself.
+ */
+const TRUSTTUNNEL_VERSION = "v1.1.5";
+const TRUSTTUNNEL_ARCHIVES: Record<string, { file: string; sha256: string; member: string }> = {
+  "darwin/universal": {
+    file: "trusttunnel_client-v1.1.5-macos-universal.tar.gz",
+    sha256: "4af128703281b2a9db5ced88138c18078ed7d883563701ead2ff76a88a63c97f",
+    member: "trusttunnel_client-v1.1.5-macos-universal/trusttunnel_client",
+  },
+  "linux/amd64": {
+    file: "trusttunnel_client-v1.1.5-linux-x86_64.tar.gz",
+    sha256: "759557812e7a280183f720e373b374f3fccb95758532cf8a94bea903dec2ca96",
+    member: "trusttunnel_client-v1.1.5-linux-x86_64/trusttunnel_client",
+  },
+  "windows/amd64": {
+    file: "trusttunnel_client-v1.1.5-windows-x86_64.zip",
+    sha256: "580cdf3735371d86fce22d46a3cce6e65dcc8f4661c3a30a18296a114e70c405",
+    member: "trusttunnel_client.exe",
+  },
+};
+
+async function stageTrustTunnelClient(
+  operatingSystem: "darwin" | "linux" | "windows",
+  goArchitecture: string,
+  destinationPath: string,
+): Promise<void> {
+  // The macOS build is universal; one archive serves both architectures.
+  const key = operatingSystem === "darwin" ? "darwin/universal" : `${operatingSystem}/${goArchitecture}`;
+  const archive = TRUSTTUNNEL_ARCHIVES[key];
+  if (archive === undefined) {
+    console.log(`[package] no TrustTunnel client for ${key}; tt:// links will not work on this build`);
+    fs.rmSync(destinationPath, { force: true });
+    return;
+  }
+  const cacheDirectory = path.join(repositoryRoot, ".cache", "trusttunnel");
+  fs.mkdirSync(cacheDirectory, { recursive: true });
+  const archivePath = path.join(cacheDirectory, archive.file);
+  const { createHash } = await import("node:crypto");
+  const checksum = () =>
+    fs.existsSync(archivePath) ? createHash("sha256").update(fs.readFileSync(archivePath)).digest("hex") : "";
+  if (checksum() !== archive.sha256) {
+    const url = `https://github.com/TrustTunnel/TrustTunnelClient/releases/download/${TRUSTTUNNEL_VERSION}/${archive.file}`;
+    console.log(`[package] fetching ${url}`);
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`TrustTunnel client download failed: ${response.status} ${url}`);
+    }
+    fs.writeFileSync(archivePath, Buffer.from(await response.arrayBuffer()));
+    if (checksum() !== archive.sha256) {
+      fs.rmSync(archivePath, { force: true });
+      throw new Error(`TrustTunnel client checksum mismatch for ${archive.file}`);
+    }
+  }
+  const extractDirectory = fs.mkdtempSync(path.join(cacheDirectory, "extract-"));
+  try {
+    // bsdtar reads both tarballs and zip files.
+    runChecked("tar", ["-xf", archivePath, "-C", extractDirectory, archive.member]);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.rmSync(destinationPath, { force: true });
+    fs.copyFileSync(path.join(extractDirectory, archive.member), destinationPath);
+    fs.chmodSync(destinationPath, 0o755);
+  } finally {
+    fs.rmSync(extractDirectory, { recursive: true, force: true });
+  }
+}
+
 function readWindowsSigningConfiguration(): WindowsSigningConfiguration | null {
   // VPN4TV: we have no Windows code-signing certificate yet. Without one the
   // build still works; SmartScreen just warns on first run.
@@ -429,6 +499,11 @@ async function packageWindows() {
         outputPath,
         architecture.portableExecutableMachine,
       );
+      await stageTrustTunnelClient(
+        "windows",
+        architecture.goArchitecture,
+        path.join(path.dirname(outputPath), "trusttunnel_client.exe"),
+      );
       const cronetLibraryPath = path.join(
         repositoryRoot,
         "bin",
@@ -631,6 +706,11 @@ async function packageMac() {
       architecture.goArchitecture,
       path.join(repositoryRoot, "bin", "sing-box-daemon"),
     );
+    await stageTrustTunnelClient(
+      "darwin",
+      architecture.goArchitecture,
+      path.join(repositoryRoot, "bin", "trusttunnel_client"),
+    );
     runChecked("electron-builder", [
       "--mac",
       "dmg",
@@ -701,6 +781,11 @@ async function packageLinux() {
       "linux",
       architecture.goArchitecture,
       path.join(repositoryRoot, "bin", "sing-box-daemon"),
+    );
+    await stageTrustTunnelClient(
+      "linux",
+      architecture.goArchitecture,
+      path.join(repositoryRoot, "bin", "trusttunnel_client"),
     );
     const argumentsList = [
       "--linux",

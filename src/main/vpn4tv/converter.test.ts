@@ -50,6 +50,19 @@ test("vless xhttp goes through the xray bridge", () => {
   assert.equal(config[BRIDGE_CONFIG_KEY].xray.inbounds[0].port, BRIDGE_PORTS.base);
 });
 
+test("trusttunnel: the link goes to the bridge whole", () => {
+  const link = "tt://?AAEBAQtiZWxsLmE0ZS5hcgULdnBuNHR2LXRlc3QGGGNkNzY1OWFmM2QzM2I3NDllMjIwYTcyOAIQYmVsbC5hNGUuYXI6ODQ0MwwOVlBONFRWIFRUIHRlc3Q";
+  const [proxy] = parseSubscription(link);
+  assert.equal(proxy.type, "trusttunnel");
+  assert.equal(proxy.ttUrl, link);
+  const config = parseGenerated([proxy]);
+  const outbound = (config.outbounds as any[]).find((entry) => entry.tag === proxy.tag);
+  assert.equal(outbound.type, "socks");
+  assert.equal(outbound.server_port, BRIDGE_PORTS.base + BRIDGE_PORTS.trusttunnelOffset);
+  assert.equal(config[BRIDGE_CONFIG_KEY].trusttunnel.endpoints[0].url, link);
+  assert.equal(parseSubscription("tt://?not base64!").length, 0);
+});
+
 test("olcrtc: the link goes to the bridge whole, the comment names the server", () => {
   const key = "0123456789abcdef".repeat(4);
   const link = `olcrtc://jitsi?datachannel@https://meet.example.org/room-42#${key}$RU%20/%20whitelist`;

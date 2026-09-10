@@ -42,6 +42,9 @@ export interface ProxyConfig {
   /** olcRTC link (olcrtc://): TCP over a WebRTC "call" on a whitelisted meeting
    *  service. The core parses the link itself; we only carry it. */
   olcrtcUrl?: string;
+  /** TrustTunnel link (tt://): AdGuard's HTTP/2 + HTTP/3 protocol, run by the
+   *  official client next to the daemon. The core decodes the link. */
+  ttUrl?: string;
 }
 
 export interface SubscriptionDns {
@@ -83,7 +86,28 @@ export function parseLine(line: string): ProxyConfig | null {
   if (value.startsWith("naive+https://") || value.startsWith("naive+quic://")) return parseNaive(value);
   if (value.startsWith("wg://")) return parseWgUri(value);
   if (value.startsWith("olcrtc://")) return parseOlcrtc(value);
+  if (value.startsWith("tt://")) return parseTrustTunnel(value);
   return null;
+}
+
+/**
+ * tt://?<base64url payload> — a binary structure the core decodes (the display
+ * name lives inside it). Here the link is only recognised and carried; a short
+ * fingerprint keeps several TrustTunnel keys apart in the list.
+ */
+function parseTrustTunnel(uri: string): ProxyConfig | null {
+  const payload = uri.slice("tt://".length).replace(/^\?/u, "");
+  if (payload.length === 0 || !/^[A-Za-z0-9_=-]+$/u.test(payload)) {
+    return null;
+  }
+  return {
+    tag: `TrustTunnel ${payload.slice(-6)}`,
+    type: "trusttunnel",
+    server: "",
+    serverPort: 0,
+    outbound: {},
+    ttUrl: uri,
+  };
 }
 
 /**

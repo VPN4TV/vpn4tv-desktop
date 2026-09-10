@@ -74,11 +74,14 @@ mac:
   # The daemon is not inside the app's code, so it has to be signed explicitly.
   binaries:
     - Contents/Resources/daemon/sing-box-daemon
+    - Contents/Resources/daemon/trusttunnel_client
   extraResources:
     - from: resources/trayTemplate.png
       to: trayTemplate.png
     - from: bin/sing-box-daemon
       to: daemon/sing-box-daemon
+    - from: bin/trusttunnel_client
+      to: daemon/trusttunnel_client
   target:
     - dmg
   artifactName: VPN4TV-macOS-${version}-${arch}.${ext}
@@ -150,6 +153,8 @@ linux:
       to: tray@2x.png
     - from: bin/sing-box-daemon
       to: daemon/sing-box-daemon
+    - from: bin/trusttunnel_client
+      to: daemon/trusttunnel_client
   desktop:
     entry:
       StartupWMClass: vpn4tv
