@@ -104,6 +104,7 @@ win:
       to: daemon
       filter:
         - libcronet.dll
+        - trusttunnel_client.exe
   target:
     - nsis
   artifactName: VPN4TV-Windows-${version}-${arch}.${ext}
