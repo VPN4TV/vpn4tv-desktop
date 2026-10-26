@@ -156,6 +156,11 @@ linux:
       to: daemon/sing-box-daemon
     - from: bin/linux/trusttunnel_client
       to: daemon/trusttunnel_client
+    # naive goes through purego on Linux; the loader looks beside the daemon.
+    - from: bin/linux
+      to: daemon
+      filter:
+        - libcronet.so
   desktop:
     entry:
       StartupWMClass: vpn4tv

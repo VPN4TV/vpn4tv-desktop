@@ -211,11 +211,12 @@ function verifyPortableExecutableArchitecture(
   }
 }
 
-function stageWindowsCronetLibrary(
-  goArchitecture: string,
-  builderArchitecture: string,
-) {
-  const modulePath = `github.com/sagernet/cronet-go/lib/windows_${goArchitecture}`;
+/**
+ * Directory of the cronet-go library module for one platform, at the version
+ * the sing-box checkout pins — the shared library has to match the Go side.
+ */
+function cronetModuleDirectory(goOperatingSystem: string, goArchitecture: string): string {
+  const modulePath = `github.com/sagernet/cronet-go/lib/${goOperatingSystem}_${goArchitecture}`;
   const result = spawnSync(goCommand(), ["list", "-m", "-f", "{{.Dir}}", modulePath], {
     cwd: singBoxDirectory,
     encoding: "utf-8",
@@ -233,7 +234,14 @@ function stageWindowsCronetLibrary(
   if (moduleDirectory === "") {
     throw new Error(`Go module has no source directory: ${modulePath}`);
   }
-  const sourcePath = path.join(moduleDirectory, "libcronet.dll");
+  return moduleDirectory;
+}
+
+function stageWindowsCronetLibrary(
+  goArchitecture: string,
+  builderArchitecture: string,
+) {
+  const sourcePath = path.join(cronetModuleDirectory("windows", goArchitecture), "libcronet.dll");
   if (!fs.existsSync(sourcePath)) {
     throw new Error(`Cronet library does not exist: ${sourcePath}`);
   }
@@ -782,6 +790,25 @@ const linuxArchitectures = [
 
 const linuxTargets = new Set(["deb", "rpm", "pacman"]);
 
+/**
+ * The Linux daemon is cross-built without cgo, so naive goes through purego
+ * (see build_boxdd): stage libcronet.so beside it, where the loader looks
+ * first. Architectures without a purego build get no library.
+ */
+function stageLinuxCronetLibrary(goArchitecture: string, destinationPath: string) {
+  fs.rmSync(destinationPath, { force: true });
+  if (goArchitecture !== "amd64" && goArchitecture !== "arm64") {
+    return;
+  }
+  const sourcePath = path.join(cronetModuleDirectory("linux", goArchitecture), "libcronet.so");
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Cronet library does not exist: ${sourcePath}`);
+  }
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.copyFileSync(sourcePath, destinationPath);
+  fs.chmodSync(destinationPath, 0o644);
+}
+
 async function packageLinux() {
   const requestedArchitectures = new Set<string>();
   const requestedTargets: string[] = [];
@@ -813,6 +840,10 @@ async function packageLinux() {
       "linux",
       architecture.goArchitecture,
       path.join(repositoryRoot, "bin", "linux", "trusttunnel_client"),
+    );
+    stageLinuxCronetLibrary(
+      architecture.goArchitecture,
+      path.join(repositoryRoot, "bin", "linux", "libcronet.so"),
     );
     const argumentsList = [
       "--linux",
