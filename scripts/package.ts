@@ -140,6 +140,13 @@ function buildBoxdd(
     );
   }
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  // build_boxdd turns cgo on only when CC is set, and without cgo it drops
+  // with_naive_outbound: a macOS daemon built that way rejects any profile
+  // with a NaiveProxy server. Windows gets naive through purego instead.
+  const environment = goEnvironment();
+  if (goOperatingSystem === "darwin" && !environment.CC) {
+    environment.CC = "clang";
+  }
   return runCheckedConcurrent(
     goCommand(),
     [
@@ -148,7 +155,7 @@ function buildBoxdd(
       `-target=${goOperatingSystem}/${goArchitecture}`,
       `-output=${outputPath}`,
     ],
-    goEnvironment(),
+    environment,
     singBoxDirectory,
   );
 }
