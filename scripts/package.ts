@@ -47,6 +47,23 @@ function goEnvironment(): NodeJS.ProcessEnv {
   return { ...process.env, GOTOOLCHAIN: goVersion };
 }
 
+// VPN4TV: every platform packs into its own release/<platform> and stages its
+// binaries in its own bin/<goos>, so mac, Windows and Linux can be packaged at
+// the same time from one checkout.
+function releaseDirectory(platform: "mac" | "win" | "linux"): string {
+  return path.join("release", platform);
+}
+
+// Set by a caller that already ran `package.ts prebuild` (codegen + out/) once
+// for all platforms: parallel packagers must not rebuild out/ under each other.
+const applicationPrebuilt = process.env.VPN4TV_APP_PREBUILT === "1";
+
+function buildApplication() {
+  if (!applicationPrebuilt) {
+    runChecked("electron-vite", ["build"]);
+  }
+}
+
 function runChecked(
   command: string,
   commandArguments: string[],
@@ -359,7 +376,7 @@ async function runWindowsElectronBuilder(
       `unsupported Windows artifact architecture: ${artifactArchitecture}`,
     );
   }
-  fs.rmSync(path.join(repositoryRoot, "release", unpackedDirectory), {
+  fs.rmSync(path.join(repositoryRoot, releaseDirectory("win"), unpackedDirectory), {
     recursive: true,
     force: true,
   });
@@ -378,6 +395,7 @@ async function runWindowsElectronBuilder(
       config: {
         compression: developmentPackage ? "store" : undefined,
         extends: path.join(repositoryRoot, "electron-builder.yml"),
+        directories: { buildResources: "build", output: releaseDirectory("win") },
         extraMetadata: { version: readApplicationVersion() },
         npmRebuild: false,
         win:
@@ -488,7 +506,7 @@ async function packageWindows() {
       requestedArchitectures.size === 0 ||
       requestedArchitectures.has(architecture.artifactArchitecture),
   );
-  runChecked("electron-vite", ["build"]);
+  buildApplication();
   console.info(
     `[package] building Windows daemons concurrently: ${selectedArchitectures.map((architecture) => architecture.artifactArchitecture).join(", ")}`,
   );
@@ -571,7 +589,7 @@ const MAC_PRODUCT_NAME = "VPN4TV Desktop";
 function notarizeDiskImage(identity: string, artifactArchitecture: string) {
   const imagePath = path.join(
     repositoryRoot,
-    "release",
+    releaseDirectory("mac"),
     `VPN4TV-macOS-${readApplicationVersion()}-${artifactArchitecture}.dmg`,
   );
   if (!fs.existsSync(imagePath)) {
@@ -706,17 +724,17 @@ async function packageMac() {
         " (or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER).",
     );
   }
-  runChecked("electron-vite", ["build"]);
+  buildApplication();
   for (const architecture of selected) {
     await buildBoxdd(
       "darwin",
       architecture.goArchitecture,
-      path.join(repositoryRoot, "bin", "sing-box-daemon"),
+      path.join(repositoryRoot, "bin", "darwin", "sing-box-daemon"),
     );
     await stageTrustTunnelClient(
       "darwin",
       architecture.goArchitecture,
-      path.join(repositoryRoot, "bin", "trusttunnel_client"),
+      path.join(repositoryRoot, "bin", "darwin", "trusttunnel_client"),
     );
     runChecked("electron-builder", [
       "--mac",
@@ -724,6 +742,8 @@ async function packageMac() {
       architecture.builderArchitectureArgument,
       "--config",
       "electron-builder.yml",
+      `--config.directories.output=${releaseDirectory("mac")}`,
+      "--config.npmRebuild=false",
       // VPN4TV: the native SwiftUI client also installs as VPN4TV.app, and the
       // one that lands second replaces the other. Only macOS needs the suffix.
       `--config.productName=${MAC_PRODUCT_NAME}`,
@@ -782,17 +802,17 @@ async function packageLinux() {
       requestedArchitectures.size === 0 ||
       requestedArchitectures.has(architecture.artifactArchitecture),
   );
-  runChecked("electron-vite", ["build"]);
+  buildApplication();
   for (const architecture of selectedArchitectures) {
     await buildBoxdd(
       "linux",
       architecture.goArchitecture,
-      path.join(repositoryRoot, "bin", "sing-box-daemon"),
+      path.join(repositoryRoot, "bin", "linux", "sing-box-daemon"),
     );
     await stageTrustTunnelClient(
       "linux",
       architecture.goArchitecture,
-      path.join(repositoryRoot, "bin", "trusttunnel_client"),
+      path.join(repositoryRoot, "bin", "linux", "trusttunnel_client"),
     );
     const argumentsList = [
       "--linux",
@@ -800,6 +820,8 @@ async function packageLinux() {
       architecture.builderArchitectureArgument,
       "--config",
       "electron-builder.yml",
+      `--config.directories.output=${releaseDirectory("linux")}`,
+      "--config.npmRebuild=false",
       `--config.extraMetadata.version=${readApplicationVersion()}`,
       ...(developmentPackage
         ? [
@@ -821,10 +843,14 @@ async function main(): Promise<void> {
   // module-scope read, so it must never reach a package.
   runChecked("node", ["scripts/check-cycles.mjs"]);
   verifyGoVersion();
-  if (packageMode !== "win-architecture") {
+  if (packageMode !== "win-architecture" && !applicationPrebuilt) {
     ensureGenerated();
   }
   switch (packageMode) {
+    case "prebuild":
+      // Codegen and out/ once, before packaging several platforms at once.
+      runChecked("electron-vite", ["build"]);
+      break;
     case "win":
       await packageWindows();
       break;

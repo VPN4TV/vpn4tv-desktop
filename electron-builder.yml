@@ -78,9 +78,9 @@ mac:
   extraResources:
     - from: resources/trayTemplate.png
       to: trayTemplate.png
-    - from: bin/sing-box-daemon
+    - from: bin/darwin/sing-box-daemon
       to: daemon/sing-box-daemon
-    - from: bin/trusttunnel_client
+    - from: bin/darwin/trusttunnel_client
       to: daemon/trusttunnel_client
   target:
     - dmg
@@ -152,9 +152,9 @@ linux:
       to: tray.png
     - from: resources/tray@2x.png
       to: tray@2x.png
-    - from: bin/sing-box-daemon
+    - from: bin/linux/sing-box-daemon
       to: daemon/sing-box-daemon
-    - from: bin/trusttunnel_client
+    - from: bin/linux/trusttunnel_client
       to: daemon/trusttunnel_client
   desktop:
     entry:
