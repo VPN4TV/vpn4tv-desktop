@@ -95,19 +95,38 @@ export function parseLine(line: string): ProxyConfig | null {
  * name lives inside it). Here the link is only recognised and carried; a short
  * fingerprint keeps several TrustTunnel keys apart in the list.
  */
+/**
+ * tt://?<base64url TLV>[#<label>] — the '?' is optional. The subscription
+ * server may write a human label after '#'; only the part before it is the
+ * key. Without a usable label a short fingerprint keeps several TrustTunnel
+ * keys apart in the list.
+ */
 function parseTrustTunnel(uri: string): ProxyConfig | null {
-  const payload = uri.slice("tt://".length).replace(/^\?/u, "");
+  const body = uri.slice("tt://".length).replace(/^\?/u, "");
+  const hash = body.indexOf("#");
+  const payload = hash >= 0 ? body.slice(0, hash) : body;
   if (payload.length === 0 || !/^[A-Za-z0-9_=-]+$/u.test(payload)) {
     return null;
   }
+  const label = hash >= 0 ? decodeLabel(body.slice(hash + 1)) : "";
   return {
-    tag: `TrustTunnel ${payload.slice(-6)}`,
+    tag: label || `TrustTunnel ${payload.slice(-6)}`,
     type: "trusttunnel",
     server: "",
     serverPort: 0,
     outbound: {},
-    ttUrl: uri,
+    // The bridge's decoder wants the bare TLV link, without the label.
+    ttUrl: `tt://?${payload}`,
   };
+}
+
+/** A URL-encoded label, or "" if it is empty or does not decode. */
+function decodeLabel(fragment: string): string {
+  try {
+    return decodeURIComponent(fragment).trim();
+  } catch {
+    return "";
+  }
 }
 
 /**

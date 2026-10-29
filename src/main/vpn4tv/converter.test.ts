@@ -63,6 +63,25 @@ test("trusttunnel: the link goes to the bridge whole", () => {
   assert.equal(parseSubscription("tt://?not base64!").length, 0);
 });
 
+test("trusttunnel: a label after '#' names the server and stays out of the link", () => {
+  const payload = "AAEBAQtiZWxsLmE0ZS5hcgULdnBuNHR2LXRlc3QGGGNkNzY1OWFmM2QzM2I3NDllMjIwYTcyOAIQYmVsbC5hNGUuYXI6ODQ0MwwOVlBONFRWIFRUIHRlc3Q";
+  const fingerprint = `TrustTunnel ${payload.slice(-6)}`;
+  const [labelled] = parseSubscription(`tt://?${payload}#US10T%20%C2%B7%20960663`);
+  assert.equal(labelled.tag, "US10T · 960663");
+  assert.equal(labelled.ttUrl, `tt://?${payload}`);
+  const [bare] = parseSubscription(`tt://?${payload}`);
+  assert.equal(bare.tag, fingerprint);
+  assert.equal(bare.ttUrl, `tt://?${payload}`);
+  const [empty] = parseSubscription(`tt://?${payload}#`);
+  assert.equal(empty.tag, fingerprint);
+  const [broken] = parseSubscription(`tt://?${payload}#US10T%ZZ`);
+  assert.equal(broken.tag, fingerprint);
+  const [noQuestionMark] = parseSubscription(`tt://${payload}#DE11T`);
+  assert.equal(noQuestionMark.tag, "DE11T");
+  assert.equal(noQuestionMark.ttUrl, `tt://?${payload}`);
+  assert.equal(parseSubscription(`tt://?Ab Cd${payload}#US10T`).length, 0);
+});
+
 test("olcrtc: the link goes to the bridge whole, the comment names the server", () => {
   const key = "0123456789abcdef".repeat(4);
   const link = `olcrtc://jitsi?datachannel@https://meet.example.org/room-42#${key}$RU%20/%20whitelist`;
