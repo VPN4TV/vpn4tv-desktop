@@ -152,6 +152,78 @@ test("hysteria2 and trojan", () => {
   assert.equal((trojan.outbound.transport as any).path, "/t");
 });
 
+test("hysteria2: one port is server_port, no port is 443", () => {
+  const [single] = parseSubscription("hysteria2://pass@hy.example.com:8443/?sni=example.com#S");
+  assert.equal(single.server, "hy.example.com");
+  assert.equal(single.serverPort, 8443);
+  assert.deepEqual(single.outbound, {
+    type: "hysteria2",
+    tag: "S",
+    server: "hy.example.com",
+    server_port: 8443,
+    password: "pass",
+    tls: { enabled: true, server_name: "example.com" },
+  });
+
+  const [none] = parseSubscription("hysteria2://pass@hy.example.com/?sni=example.com#N");
+  assert.equal(none.server, "hy.example.com");
+  assert.equal(none.outbound.server_port, 443);
+  assert.equal(none.outbound.server_ports, undefined);
+  assert.equal(none.outbound.hop_interval, undefined);
+});
+
+test("hysteria2: a port list in the link is port hopping", () => {
+  // The backend's hy2-only key, in the form its own health check dials.
+  const id = "0192f0e0-aaaa-7bbb-8ccc-123456789abc";
+  const [backend] = parseSubscription(
+    `hysteria2://${id}@hy.example.net:8443,9443,20000-40000/?sni=example.net&insecure=0#HY123_7`,
+  );
+  assert.equal(backend.tag, "HY123_7");
+  assert.equal(backend.server, "hy.example.net");
+  assert.deepEqual(backend.outbound, {
+    type: "hysteria2",
+    tag: "HY123_7",
+    server: "hy.example.net",
+    server_ports: ["8443:8443", "9443:9443", "20000:40000"],
+    hop_interval: "30s",
+    password: id,
+    tls: { enabled: true, server_name: "example.net" },
+  });
+
+  // A range alone is hopping too; the other parameters are untouched.
+  const [range] = parseSubscription(
+    "hy2://pass@203.0.113.7:20000-40000?sni=example.com&insecure=1&obfs=salamander&obfs-password=x#R",
+  );
+  assert.equal(range.outbound.server, "203.0.113.7");
+  assert.deepEqual(range.outbound.server_ports, ["20000:40000"]);
+  assert.equal(range.outbound.server_port, undefined);
+  assert.deepEqual(range.outbound.tls, { enabled: true, server_name: "example.com", insecure: true });
+  assert.deepEqual(range.outbound.obfs, { type: "salamander", password: "x" });
+
+  // Bracketed IPv6 keeps its host; the entries keep their order.
+  const [v6] = parseSubscription("hysteria2://pass@[2001:db8::1]:9443,5000-6000,8443/?sni=example.com#V6");
+  assert.equal(v6.server, "2001:db8::1");
+  assert.equal(v6.outbound.server, "2001:db8::1");
+  assert.deepEqual(v6.outbound.server_ports, ["9443:9443", "5000:6000", "8443:8443"]);
+  assert.equal(v6.outbound.hop_interval, "30s");
+
+  // The profile carries it to the core as is.
+  const config = parseGenerated([backend]);
+  const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "HY123_7");
+  assert.deepEqual(outbound.server_ports, ["8443:8443", "9443:9443", "20000:40000"]);
+  assert.equal(outbound.server_port, undefined);
+});
+
+test("hysteria2: a broken port list falls back to 443", () => {
+  for (const ports of ["8443,", "8443,,9443", "8443,abc", "8443-", "40000-20000", "0", "65536", "8443-70000"]) {
+    const [proxy] = parseSubscription(`hysteria2://pass@hy.example.com:${ports}/?sni=example.com#B`);
+    assert.equal(proxy.server, "hy.example.com", ports);
+    assert.equal(proxy.outbound.server_port, 443, ports);
+    assert.equal(proxy.outbound.server_ports, undefined, ports);
+    assert.equal(proxy.outbound.hop_interval, undefined, ports);
+  }
+});
+
 test("wg:// URI becomes an AmneziaWG INI on the wireproxy bridge", () => {
   const uri =
     "wg://wg.example.com:51820?private_key=PRIV&peer_public_key=PUB&local_address=10.8.0.2%2F32" +

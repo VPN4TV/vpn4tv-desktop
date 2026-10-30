@@ -46,12 +46,16 @@ export interface ParsedURI {
   userInfoEncoded?: string;
   host?: string;
   port: number;
+  /** The port as written ("" when absent). Hysteria2 puts a port-hopping list
+   *  there ("8443,9443,20000-40000"), of which `port` is only the first number. */
+  portText: string;
   fragment?: string;
   query: Record<string, string>;
 }
 
-/** Split "host:port" / "[v6]:port" — port is 0 when absent. */
-export function splitHostPort(input: string): { host: string; port: number } | null {
+/** Split "host:port" / "[v6]:port" — port is 0 when absent; portText is the
+ *  port as written, up to any path ("" when absent). */
+export function splitHostPort(input: string): { host: string; port: number; portText: string } | null {
   const value = input.trim();
   if (value.length === 0) {
     return null;
@@ -64,17 +68,18 @@ export function splitHostPort(input: string): { host: string; port: number } | n
     const host = value.slice(1, end);
     const rest = value.slice(end + 1);
     const port = rest.startsWith(":") ? Number.parseInt(rest.slice(1), 10) : 0;
-    return { host, port: Number.isFinite(port) ? port : 0 };
+    const portText = rest.startsWith(":") ? rest.slice(1).split("/")[0] : "";
+    return { host, port: Number.isFinite(port) ? port : 0, portText };
   }
   const colon = value.lastIndexOf(":");
   if (colon < 0) {
-    return { host: value, port: 0 };
+    return { host: value, port: 0, portText: "" };
   }
   const port = Number.parseInt(value.slice(colon + 1), 10);
   if (!Number.isFinite(port)) {
-    return { host: value, port: 0 };
+    return { host: value, port: 0, portText: "" };
   }
-  return { host: value.slice(0, colon), port };
+  return { host: value.slice(0, colon), port, portText: value.slice(colon + 1).split("/")[0] };
 }
 
 /**
@@ -129,6 +134,7 @@ export function parseProxyURI(uri: string): ParsedURI | null {
     userInfoEncoded,
     host: hostPort?.host,
     port: hostPort?.port ?? 0,
+    portText: hostPort?.portText ?? "",
     fragment: fragment && fragment.length > 0 ? fragment : undefined,
     query,
   };

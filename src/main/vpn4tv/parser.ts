@@ -331,7 +331,8 @@ function parseHysteria2(uri: string): ProxyConfig | null {
     return null;
   }
   const host = parsed.host;
-  const port = parsed.port > 0 ? parsed.port : 443;
+  // No port, or a port part that does not parse, means 443.
+  const ports = parseHysteria2Ports(parsed.portText) ?? { port: 443 };
   const name = parsed.fragment ?? host;
   const tls: Json = { enabled: true, server_name: parsed.query.sni ?? host };
   if (parsed.query.insecure === "1") {
@@ -341,7 +342,10 @@ function parseHysteria2(uri: string): ProxyConfig | null {
     type: "hysteria2",
     tag: name,
     server: host,
-    server_port: port,
+    // A port list is port hopping: server_ports takes the place of server_port.
+    ...(ports.serverPorts
+      ? { server_ports: ports.serverPorts, hop_interval: "30s" }
+      : { server_port: ports.port }),
     password: parsed.userInfo,
     tls,
   };
@@ -349,7 +353,41 @@ function parseHysteria2(uri: string): ProxyConfig | null {
   if (obfs.length > 0) {
     outbound.obfs = { type: obfs, password: parsed.query["obfs-password"] ?? "" };
   }
-  return { tag: name, type: "hysteria2", server: host, serverPort: port, outbound };
+  return { tag: name, type: "hysteria2", server: host, serverPort: ports.port, outbound };
+}
+
+/**
+ * The port part of a Hysteria2 link: one port, or a port-hopping list such as
+ * "8443,9443,20000-40000" (entries are ports or "start-end" ranges). A list, or
+ * any range, also comes back as sing-box server_ports in the "start:end" form
+ * the core requires — a lone port as "8443:8443", since sing-quic's ParsePorts
+ * rejects an entry without ":" — and `port` is then the first port. null for
+ * anything else (an empty entry, non-digits, a port outside 1..65535, a range
+ * that runs backwards), so that no profile the core would reject comes out.
+ */
+function parseHysteria2Ports(text: string): { port: number; serverPorts?: string[] } | null {
+  const ranges: [number, number][] = [];
+  let range = false;
+  for (const entry of text.split(",")) {
+    const match = /^(\d+)(?:-(\d+))?$/u.exec(entry);
+    if (match === null) {
+      return null;
+    }
+    const start = Number(match[1]);
+    const end = match[2] === undefined ? start : Number(match[2]);
+    if (start < 1 || end > 65535 || start > end) {
+      return null;
+    }
+    if (match[2] !== undefined) {
+      range = true;
+    }
+    ranges.push([start, end]);
+  }
+  const port = ranges[0][0];
+  if (ranges.length === 1 && !range) {
+    return { port };
+  }
+  return { port, serverPorts: ranges.map(([start, end]) => `${start}:${end}`) };
 }
 
 // ---- TROJAN ----
