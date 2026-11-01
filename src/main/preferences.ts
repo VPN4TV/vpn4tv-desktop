@@ -7,7 +7,7 @@ import {
 } from "../shared/ipc";
 import type { ProfilesResult } from "../shared/ipc";
 import { DESKTOP_LANGUAGES } from "../shared/translations";
-import { regenerateRemoteProfiles } from "./profiles";
+import { regenerateRemoteProfiles, reloadSelectedIfRunning } from "./profiles";
 import { parsePerAppProxy } from "./vpn4tv";
 import {
   parseBooleanPreference,
@@ -113,6 +113,9 @@ const rendererPreferences: Record<string, PreferenceParser> = {
   "vpn4tv-fake-dns": parseBooleanPreference,
   // VPN4TV: keep LAN traffic off the tunnel (same switch as on Android).
   "vpn4tv-lan-bypass": parseBooleanPreference,
+  // VPN4TV: "Everything through VPN" — off: Russian sites and services go
+  // direct ("Russia direct", added at every start).
+  "vpn4tv-all-through-vpn": parseBooleanPreference,
   // VPN4TV: send crash dumps to our receiver, as the mobile clients do.
   "vpn4tv-send-crash-reports": parseBooleanPreference,
   // VPN4TV: split tunnelling by executable name.
@@ -144,6 +147,11 @@ function notifyPreferenceChanged(name: string, value?: unknown): void {
     // The stored config is generated, so the switch only takes effect once the
     // profiles are rebuilt.
     void regenerateRemoteProfiles().catch(() => {});
+  }
+  if (name === "vpn4tv-all-through-vpn") {
+    // Added at every start, not generated: a reload of the running service
+    // applies it at once, to local profiles too and without the network.
+    void reloadSelectedIfRunning().catch(() => {});
   }
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.webContents.isDestroyed()) {

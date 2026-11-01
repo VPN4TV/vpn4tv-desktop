@@ -8,12 +8,25 @@ import { decodeVpn4tvLink } from "./vpn4tv/parser";
 import { injectProbedDns, probeDns } from "./vpn4tv/dns";
 import { applyIPv6Support } from "./vpn4tv/ipv6";
 import { hasDynamicOutlineKeys, resolveDynamicOutlineKeys } from "./vpn4tv/outlineDynamic";
+import { usableRuleSets } from "./vpn4tv/russiaDirect";
+import { probeDnsRu, probeProxyAlive } from "./vpn4tv/russiaDirectProbe";
 import {
+  type Prepared,
+  type Wanted,
+  RussiaDirectRuntime,
+  russiaDirectLabel,
+  russiaDirectLine,
+} from "./vpn4tv/russiaDirectRuntime";
+import {
+  allThroughVpnEnabled,
+  autoConnectEnabled,
   convertSubscription,
   hwid,
   forgetSubscriptionInfo,
   rememberRuDirect,
   rememberSubscriptionInfo,
+  ruDirectOff,
+  ruVpnExtra,
   subscriptionHeaders,
   subscriptionInfo,
 } from "./vpn4tv";
@@ -29,8 +42,15 @@ import type {
   ProfilesState,
 } from "../shared/ipc";
 import { writeApplicationCacheFile } from "./appCache";
-import { desktopService } from "./daemon";
-import { Preference, settingsDatabase } from "./database";
+import { clearServiceLogLines, writeServiceLogLine } from "./appLog";
+import { desktopService, startedService } from "./daemon";
+import {
+  Preference,
+  preferenceSnapshot,
+  removePreference,
+  setPreference,
+  settingsDatabase,
+} from "./database";
 import { oomStartOptions } from "./settings";
 import { applicationService } from "./worker";
 import { daemonState } from "./state";
@@ -181,6 +201,13 @@ function notifyChanged() {
 
 async function checkConfig(content: string): Promise<void> {
   await applicationService.checkConfig({ content });
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof ConnectError) {
+    return error.rawMessage;
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function readLimitedResponse(
@@ -363,32 +390,388 @@ async function encodeProfileData(id: string): Promise<Uint8Array> {
   return encoded.data;
 }
 
+// ---- VPN4TV: "Russia direct" around every start (vpn4tv/russiaDirect*.ts) ----
+
+const russiaDirect = new RussiaDirectRuntime({
+  store: {
+    get: (name) => preferenceSnapshot([name])[name],
+    set: (name, value) => setPreference(name, value),
+    remove: (name) => removePreference(name),
+  },
+  appVersion: __APP_VERSION__,
+  checkConfig: async (content) => {
+    try {
+      await checkConfig(content);
+    } catch (error) {
+      throw new Error(errorMessage(error));
+    }
+  },
+  serviceRunning: () =>
+    daemonState.connection.phase === "connected" &&
+    daemonState.status === ServiceStatus_Type.STARTED,
+  log: (warn, message) => (warn ? console.warn : console.info)(`vpn4tv: ${message}`),
+  schedule: (milliseconds, callback) => {
+    const timer = setTimeout(callback, milliseconds);
+    timer.unref();
+    return () => clearTimeout(timer);
+  },
+});
+
+/** What the user and our server want for [profileId]. */
+function russiaDirectWanted(profileId?: string): Wanted {
+  let offReason: string | null = null;
+  if (allThroughVpnEnabled()) {
+    offReason = "user";
+  } else if (profileId !== undefined && ruDirectOff(profileId)) {
+    offReason = "head";
+  }
+  return {
+    offReason,
+    extraExceptions: profileId === undefined ? [] : ruVpnExtra(profileId),
+    sets: usableRuleSets(),
+  };
+}
+
+/**
+ * One line for support after every start and reload: whether "Russia direct"
+ * is in and why not. Into the Logs screen too (appLog.ts), after the start,
+ * since a start clears that log.
+ */
+function logRussiaDirect(prepared: Prepared): void {
+  const line = russiaDirectLine(prepared);
+  (prepared.warn ? console.warn : console.info)(`vpn4tv: ${line}`);
+  writeServiceLogLine({ warn: prepared.warn, message: line }, true);
+}
+
+// Starts and reloads go to the daemon one at a time: the crash guard, the
+// retry without the block and the one-time restart below each assume that
+// nothing else replaces the config while they run.
+let serviceStartChain: Promise<void> = Promise.resolve();
+
+function runServiceStart<Result>(operation: () => Promise<Result>): Promise<Result> {
+  const result = serviceStartChain.then(operation);
+  serviceStartChain = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
+}
+
+/** This run of the app has started (or is starting) the service itself. */
+let startedThisSession = false;
+/** A start of ours is talking to the daemon right now. */
+let serviceStartRunning = false;
+
+interface StartRequest {
+  /** A connect: what the last session learned about "Russia direct" starts over. */
+  newSession?: boolean;
+  /** Check the final config in the worker first, and do not start if it is refused. */
+  checkFirst?: boolean;
+}
+
+/** The daemon itself went away during a call, as opposed to refusing it or not being there. */
+function daemonDiedDuringCall(error: unknown): boolean {
+  const message = errorMessage(error);
+  if (/ECONNREFUSED|ENOENT/u.test(message)) {
+    return false;
+  }
+  return /ECONNRESET|EPIPE|premature close|socket hang up|stream (?:was )?(?:closed|destroyed|reset)|GOAWAY/iu.test(
+    message,
+  );
+}
+
 async function startServiceWithContent(content: string, profileId?: string): Promise<void> {
+  // Set before anything is awaited: the daemon's first STARTED of this run
+  // must already see it (the one-time restart below).
+  startedThisSession = true;
+  await runServiceStart(() => startServiceNow(content, profileId, {}));
+}
+
+/** The start itself; only ever called inside runServiceStart. */
+async function startServiceNow(
+  content: string,
+  profileId: string | undefined,
+  request: StartRequest,
+): Promise<void> {
   if (desktopService === null) {
     throw new Error("daemon is not available");
   }
-  // VPN4TV: Outline dynamic keys are meant to be fetched by the client before
-  // connecting — the provider rotates servers behind them. The resolved key is
-  // written back, so the next start still works when the key host is blocked.
-  if (hasDynamicOutlineKeys(content)) {
-    const resolved = await resolveDynamicOutlineKeys(content);
-    if (resolved !== content) {
-      content = resolved;
-      if (profileId !== undefined) {
-        await atomicWriteFile(contentPath(profileId), resolved).catch(() => {});
+  startedThisSession = true;
+  serviceStartRunning = true;
+  // Whatever runs after this start is this start's config.
+  russiaDirect.repairPending = false;
+  try {
+    // VPN4TV: Outline dynamic keys are meant to be fetched by the client before
+    // connecting — the provider rotates servers behind them. The resolved key is
+    // written back, so the next start still works when the key host is blocked.
+    if (hasDynamicOutlineKeys(content)) {
+      const resolved = await resolveDynamicOutlineKeys(content);
+      if (resolved !== content) {
+        content = resolved;
+        if (profileId !== undefined) {
+          await atomicWriteFile(contentPath(profileId), resolved).catch(() => {});
+        }
       }
     }
+    // VPN4TV: pick a resolver that is actually reachable on this network before
+    // handing the config over — Russian ISPs kill DoH providers in waves, and the
+    // one baked into the profile may be dead. Best effort: the probe never blocks
+    // a connect for more than a few seconds and leaves the config alone on failure.
+    // A machine with IPv6 switched off cannot take the tunnel's IPv6 address, and
+    // the start aborts with "set ipv6 address: Element not found".
+    // The config without "Russia direct": what a start that fails with it is
+    // retried with, and what 1.0.0-beta.13 ran.
+    const base = applyIPv6Support(injectProbedDns(content, await probeDns()));
+    if (request.newSession === true) {
+      russiaDirect.newSession();
+    }
+    const wanted = russiaDirectWanted(profileId);
+    const prepared = await russiaDirect.prepare(base, wanted);
+    if (request.checkFirst === true) {
+      await checkConfig(prepared.content);
+    }
+    const options = await oomStartOptions();
+    const daemonWasUp = daemonState.connection.phase === "connected";
+    const startedAt = Date.now();
+    russiaDirect.armForStart(prepared);
+    let ran = prepared;
+    try {
+      await desktopService.startService({ configContent: prepared.content, options });
+    } catch (error) {
+      if (daemonWasUp && daemonDiedDuringCall(error)) {
+        // The core died taking the config. The system restarts the daemon,
+        // and the crash guard leaves the block out of the next start.
+        russiaDirect.onDaemonLost();
+        throw error;
+      }
+      // A start that fails with "Russia direct" is retried without it; if that
+      // fails too, the block was not the cause and the error is the one the
+      // user saw before. Without it means with the torrent rule alone. Not
+      // when the user asked to stop in the meantime.
+      const fallback = russiaDirect.torrentsOnly(base, "session");
+      if (
+        prepared.content === base ||
+        prepared.content === fallback ||
+        daemonState.stopRequestedAt >= startedAt
+      ) {
+        russiaDirect.onStopped();
+        throw error;
+      }
+      const message = errorMessage(error);
+      console.warn(`vpn4tv: start with Russia direct failed, retrying without it: ${message}`);
+      try {
+        await desktopService.startService({ configContent: fallback, options });
+      } catch (retryError) {
+        console.error(`vpn4tv: start without Russia direct failed too: ${errorMessage(retryError)}`);
+        russiaDirect.onStopped();
+        throw retryError;
+      }
+      russiaDirect.rolledBack(message);
+      ran = {
+        content: fallback,
+        state: `off (session: the start with it failed: ${message})`,
+        warn: true,
+        guarded: false,
+        usesDnsRu: false,
+      };
+    }
+    logRussiaDirect(ran);
+    russiaDirect.recordApplied(russiaDirectLabel(wanted.offReason), ran);
+    russiaDirect.onRunning(ran);
+    if (russiaDirect.claimDnsCheck(ran)) {
+      void runDnsRuSelfCheck();
+    }
+  } finally {
+    serviceStartRunning = false;
   }
-  // VPN4TV: pick a resolver that is actually reachable on this network before
-  // handing the config over — Russian ISPs kill DoH providers in waves, and the
-  // one baked into the profile may be dead. Best effort: the probe never blocks
-  // a connect for more than a few seconds and leaves the config alone on failure.
-  // A machine with IPv6 switched off cannot take the tunnel's IPv6 address, and
-  // the start aborts with "set ipv6 address: Element not found".
-  await desktopService.startService({
-    configContent: applyIPv6Support(injectProbedDns(content, await probeDns())),
-    options: await oomStartOptions(),
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+/**
+ * Russian names resolve at Yandex over TCP 53, outside the tunnel. Where that
+ * port is closed (hotels, offices, networks abroad) Russian names would stop
+ * resolving. Ask for one through the tunnel after connect; if dns-ru does not
+ * answer while the proxy does, our DNS rule resolves through dns-direct for
+ * the session, and reload. Only ever falls back, once per session.
+ */
+async function runDnsRuSelfCheck(): Promise<void> {
+  try {
+    await sleep(4_000); // let the tunnel and the bridges settle
+    const wanted = () =>
+      !russiaDirect.dnsRuFallback && daemonState.status === ServiceStatus_Type.STARTED;
+    const warn = (message: string) => console.warn(`vpn4tv: ${message}`);
+    // A second round a minute later when the first cannot tell: the proxy was
+    // not up yet either (slow bridges, a start at boot).
+    for (let round = 1; round <= 2; round++) {
+      if (!wanted()) {
+        return;
+      }
+      if (await probeDnsRu(3, wanted, warn)) {
+        console.info("vpn4tv: dns-ru health check OK");
+        return;
+      }
+      if (!wanted()) {
+        return;
+      }
+      if (await probeProxyAlive(wanted)) {
+        break;
+      }
+      warn(`dns-ru health check: no answer, but the proxy is down too — not blaming dns-ru (round ${round} of 2)`);
+      if (round === 2) {
+        return;
+      }
+      await sleep(60_000);
+    }
+    if (!wanted()) {
+      return;
+    }
+    warn("dns-ru health check FAILED — Russian names resolve through dns-direct this session; reloading");
+    writeServiceLogLine({ warn: true, message: "russia-direct: dns-ru does not answer, Russian names resolve through dns-direct this session" });
+    russiaDirect.dnsRuFallback = true;
+    await reloadSelectedIfRunning();
+  } catch (error) {
+    console.warn(`vpn4tv: dns-ru health check error: ${errorMessage(error)}`);
+  }
+}
+
+let queuedSettingsReload: Promise<void> | null = null;
+
+/**
+ * Reload the running service after a setting the start-time config depends
+ * on changed ("Everything through VPN", the dns-ru fallback). A burst of
+ * changes merges into one reload: the queued one reads the settings when it
+ * runs.
+ */
+export function reloadSelectedIfRunning(): Promise<void> {
+  if (queuedSettingsReload !== null) {
+    return queuedSettingsReload;
+  }
+  const reload = runServiceStart(async () => {
+    queuedSettingsReload = null;
+    const id = selectedProfileId();
+    if (id === null || daemonState.status !== ServiceStatus_Type.STARTED) {
+      return;
+    }
+    await startServiceNow(await readFile(contentPath(id), "utf-8"), id, {});
   });
+  queuedSettingsReload = reload;
+  return reload;
+}
+
+/** A restart of the selected profile that nobody asked for; skipped when the service is not running. */
+function restartSelectedInBackground(why: string, request: StartRequest, stillWanted: () => boolean): void {
+  void runServiceStart(async () => {
+    if (!stillWanted() || daemonState.status !== ServiceStatus_Type.STARTED) {
+      return;
+    }
+    const id = selectedProfileId();
+    if (id === null) {
+      return;
+    }
+    console.info(`vpn4tv: ${why}`);
+    await startServiceNow(await readFile(contentPath(id), "utf-8"), id, request);
+  }).catch((error: unknown) => {
+    console.warn(`vpn4tv: ${why} — not done: ${errorMessage(error)}`);
+  });
+}
+
+let firstStartedSeen = false;
+
+/**
+ * The daemon says STARTED. A start of ours handles "Russia direct" itself; a
+ * service the daemon brought back on its own (after a crash or a reboot, or
+ * running since before this app was started) gets three looks:
+ *  - a crash with the block was recorded: restart it, the start leaves the
+ *    block out (the daemon brought back the very config that crashed);
+ *  - it came back less than 30 s ago with a config that carried the block:
+ *    the crash guard covers the rest of those 30 s;
+ *  - the first time in this run, when the app did not start the service
+ *    itself and does not connect at launch: if the last start applied another
+ *    revision of the block or lists (an update), restart it once — the daemon
+ *    runs the config of the version before. The final config is checked in
+ *    the worker first: a working tunnel is not dropped for a config the core
+ *    would refuse.
+ */
+function onServiceStarted(): void {
+  if (russiaDirect.repairPending) {
+    restartSelectedInBackground(
+      "restarting the service the daemon brought back after a crash with Russia direct",
+      { newSession: true },
+      () => russiaDirect.repairPending,
+    );
+    return;
+  }
+  if (serviceStartRunning) {
+    return;
+  }
+  if (startedService !== null) {
+    void startedService
+      .getStartedAt({})
+      .then((reply) => {
+        if (!serviceStartRunning && reply.startedAt > 0n) {
+          russiaDirect.onRestored(Date.now() - Number(reply.startedAt));
+        }
+      })
+      .catch(() => {});
+  }
+  if (firstStartedSeen) {
+    return;
+  }
+  firstStartedSeen = true;
+  if (startedThisSession || autoConnectEnabled()) {
+    return;
+  }
+  const id = selectedProfileId();
+  if (id === null) {
+    return;
+  }
+  const expected = russiaDirectLabel(russiaDirectWanted(id).offReason);
+  if (russiaDirect.appliedLabel() === expected) {
+    return;
+  }
+  restartSelectedInBackground(
+    `one-time restart: the service runs a config without the current Russia direct (${russiaDirect.appliedLabel() ?? "none"} → ${expected})`,
+    { newSession: true, checkFirst: true },
+    () => !startedThisSession,
+  );
+}
+
+/** Follow the daemon for the crash guard, the restart after a crash and the one-time restart. */
+function watchServiceForRussiaDirect(): void {
+  let lastStatus = daemonState.status;
+  daemonState.on("change", () => {
+    const status = daemonState.status;
+    const previous = lastStatus;
+    if (status === previous) {
+      return;
+    }
+    lastStatus = status;
+    if (status === null) {
+      if (previous !== null) {
+        clearServiceLogLines();
+        // The status stream broke while connected: the daemon went down. (Another
+        // user taking the service over also clears the status, but changes the
+        // connection phase first; that is no crash.)
+        if (daemonState.connection.phase === "connected") {
+          russiaDirect.onDaemonLost();
+        }
+      }
+      return;
+    }
+    if (status === ServiceStatus_Type.IDLE || status === ServiceStatus_Type.FATAL) {
+      if (previous !== null) {
+        russiaDirect.onStopped();
+      }
+      return;
+    }
+    if (status === ServiceStatus_Type.STARTED) {
+      onServiceStarted();
+    }
+  });
+  daemonState.on("stop-requested", () => russiaDirect.onStopped());
 }
 
 async function reloadIfSelectedAndRunning(id: string): Promise<void> {
@@ -476,12 +859,15 @@ export async function regenerateRemoteProfiles(): Promise<void> {
 }
 
 export async function startSelectedProfile(): Promise<void> {
+  // VPN4TV: before anything is awaited — see startServiceWithContent.
+  startedThisSession = true;
   const selectedId = selectedProfileId();
   if (selectedId === null) {
     throw new Error("no profile selected");
   }
   const content = await readFile(contentPath(selectedId), "utf-8");
-  await startServiceWithContent(content, selectedId);
+  // A connect: what the last session learned about "Russia direct" starts over.
+  await runServiceStart(() => startServiceNow(content, selectedId, { newSession: true }));
 }
 
 let updateTimer: NodeJS.Timeout | null = null;
@@ -842,4 +1228,5 @@ export function registerProfiles() {
     },
   );
   reconfigureAutoUpdate();
+  watchServiceForRussiaDirect();
 }

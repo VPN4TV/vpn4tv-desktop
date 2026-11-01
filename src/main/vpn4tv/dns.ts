@@ -16,7 +16,9 @@ interface Provider {
   udpIps?: string[];
   /** The DoH certificate covers the raw IP, so sing-box can use it directly. */
   ipCertSan?: boolean;
-  /** RU jurisdiction: probe only, never in the in-app chain. */
+  /** RU jurisdiction: probe only, never in the in-app chain. ("Russia direct"
+   *  sends Russian names to Yandex on purpose, through its own dns-ru server
+   *  that this rewrite leaves alone — see russiaDirect.ts.) */
   lastResort?: boolean;
 }
 

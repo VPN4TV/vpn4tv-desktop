@@ -59,6 +59,7 @@ async function destroyWorkingDirectory(): Promise<void> {
   }
   const status = daemonState.status;
   if (status === ServiceStatus_Type.STARTED || status === ServiceStatus_Type.STARTING) {
+    daemonState.noteStopRequested();
     await managedService.stopService({});
   }
   await desktopService.destroyWorkingDirectory({});

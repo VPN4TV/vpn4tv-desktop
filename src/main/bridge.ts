@@ -1,4 +1,4 @@
-import { fromBinary, toBinary } from "@bufbuild/protobuf";
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import type { DescMethod, DescMethodStreaming, DescMethodUnary, DescService } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { createWritableIterable } from "@connectrpc/connect/protocol";
@@ -18,8 +18,14 @@ import {
 } from "../shared/ipc";
 import type { BridgeError, StreamEvent, UnaryResult } from "../shared/ipc";
 import { ManagedService } from "../shared/gen/daemon/managed_service_pb";
-import { StartedService } from "../shared/gen/daemon/started_service_pb";
+import {
+  LogLevel,
+  LogSchema,
+  Log_MessageSchema,
+  StartedService,
+} from "../shared/gen/daemon/started_service_pb";
 import { ApplicationService, DesktopService } from "../shared/gen/experimental/boxdd/desktop_service_pb";
+import { type ServiceLogLine, onServiceLogLine, serviceLogLines } from "./appLog";
 import { daemonTransport } from "./daemon";
 import { daemonState } from "./state";
 import { workerTransport } from "./worker";
@@ -36,6 +42,22 @@ function serviceTransport(serviceName: string) {
 function findMethod(serviceName: string, methodName: string): DescMethod | undefined {
   const service = services.find((candidate) => candidate.typeName === serviceName);
   return service?.methods.find((candidate) => candidate.name === methodName);
+}
+
+// VPN4TV: the app's own lines for the Logs screen (appLog.ts), in the shape
+// of the daemon's log messages, as the mobile clients write them.
+function appLogMessage(lines: readonly ServiceLogLine[]): Uint8Array {
+  return toBinary(
+    LogSchema,
+    create(LogSchema, {
+      messages: lines.map((line) =>
+        create(Log_MessageSchema, {
+          level: line.warn ? LogLevel.WARN : LogLevel.INFO,
+          message: `${line.warn ? "WARN" : "INFO"} ${line.message}`,
+        }),
+      ),
+    }),
+  );
 }
 
 function bridgeError(error: unknown): BridgeError {
@@ -118,6 +140,10 @@ export function registerDaemonBridge() {
       if (transport === null) {
         return { ok: false, error: unavailable };
       }
+      if (serviceName === ManagedService.typeName && methodName === "StopService") {
+        // VPN4TV: the dashboard's "Stop" (see DaemonState.noteStopRequested).
+        daemonState.noteStopRequested();
+      }
       try {
         const unaryMethod = method as DescMethodUnary;
         const input = fromBinary(unaryMethod.input, request);
@@ -170,6 +196,10 @@ export function registerDaemonBridge() {
         previous.controller.abort();
       }
       activeStreams.set(id, active);
+      // VPN4TV: the service log gets the app's own lines appended (appLog.ts).
+      const appendsAppLog =
+        serviceName === StartedService.typeName && methodName === "SubscribeLog";
+      let stopAppLog: (() => void) | null = null;
       void (async () => {
         try {
           const streamingMethod = method as DescMethodStreaming;
@@ -182,6 +212,16 @@ export function registerDaemonBridge() {
           );
           for await (const message of response.message) {
             send({ id, type: "message", data: toBinary(streamingMethod.output, message) });
+            if (appendsAppLog && stopAppLog === null) {
+              // The first message is the log the daemon kept: ours go after it.
+              const current = serviceLogLines();
+              if (current.length > 0) {
+                send({ id, type: "message", data: appLogMessage(current) });
+              }
+              stopAppLog = onServiceLogLine((line) => {
+                send({ id, type: "message", data: appLogMessage([line]) });
+              });
+            }
           }
           send({ id, type: "end" });
         } catch (error) {
@@ -189,6 +229,7 @@ export function registerDaemonBridge() {
             send({ id, type: "end", error: bridgeError(error) });
           }
         } finally {
+          stopAppLog?.();
           input.end();
           if (activeStreams.get(id) === active) {
             activeStreams.delete(id);

@@ -9,6 +9,7 @@ import { app } from "electron";
 
 import { Preference, parseBooleanPreference } from "./database";
 import * as reports from "./reports";
+import { withoutRuleSetData } from "./vpn4tv/russiaDirect";
 
 const RECEIVER_URL = "https://bell.a4e.ar/crash";
 const REQUEST_TIMEOUT_MILLISECONDS = 15_000;
@@ -81,7 +82,11 @@ export async function uploadPendingCrashReports(): Promise<void> {
       const files = await reports.readCrashReport(entry.name);
       const content = files
         .filter((file) => !file.isBinary && file.content !== "")
-        .map((file) => `===== ${file.name} =====\n${file.content}`)
+        .map((file) => {
+          // The "Russia direct" rule sets ride inline in the config snapshot.
+          const text = file.name === "configuration.json" ? withoutRuleSetData(file.content) : file.content;
+          return `===== ${file.name} =====\n${text}`;
+        })
         .join("\n\n");
       if (content !== "") {
         await upload(entry.name, content);

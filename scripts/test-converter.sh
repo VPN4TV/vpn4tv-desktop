@@ -45,8 +45,11 @@ cat > "$OUT/tsconfig.json" <<EOF
     "$PWD/src/main/vpn4tv/russiaDirect.ts",
     "$PWD/src/main/vpn4tv/russiaDirectLists.generated.ts",
     "$PWD/src/main/vpn4tv/ruleSets.generated.ts",
+    "$PWD/src/main/vpn4tv/russiaDirectRuntime.ts",
+    "$PWD/src/main/vpn4tv/russiaDirectProbe.ts",
     "$PWD/src/main/vpn4tv/dns.test.ts",
     "$PWD/src/main/vpn4tv/russiaDirect.test.ts",
+    "$PWD/src/main/vpn4tv/russiaDirectRuntime.test.ts",
     "$PWD/src/main/vpn4tv/converter.test.ts",
     "$PWD/src/main/vpn4tv/onboarding.test.ts",
     "$PWD/src/main/vpn4tv/integration.test.ts"

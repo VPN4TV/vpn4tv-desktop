@@ -100,7 +100,10 @@ function buildTrayTemplate(): MenuItemConstructorOptions[] {
   if (started) {
     template.push({
       label: translate("Stop"),
-      click: () => ignoreErrors(managedService?.stopService({})),
+      click: () => {
+        daemonState.noteStopRequested();
+        ignoreErrors(managedService?.stopService({}));
+      },
     });
   } else {
     template.push({

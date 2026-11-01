@@ -28,6 +28,18 @@ class DaemonState extends EventEmitter {
   // takes seconds) used to be dropped, leaving the user waiting out a backoff
   // after the service was already installed.
   private retryRequested = false;
+  /** VPN4TV: when the user last asked the service to stop (dashboard, tray); 0 = never. */
+  stopRequestedAt = 0;
+
+  /**
+   * VPN4TV: the user asked the service to stop. A start of ours that fails
+   * afterwards must not bring it back with a retry, and a stop is no crash
+   * for the "Russia direct" crash guard.
+   */
+  noteStopRequested() {
+    this.stopRequestedAt = Date.now();
+    this.emit("stop-requested");
+  }
 
   start() {
     if (this.started) {

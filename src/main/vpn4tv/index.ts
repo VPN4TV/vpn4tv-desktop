@@ -91,6 +91,17 @@ export function lanBypassEnabled(): boolean {
   return lanBypassPreference.get();
 }
 
+const autoConnectPreference = new Preference<boolean>(
+  "vpn4tv-auto-connect",
+  false,
+  (value) => value === true,
+);
+
+/** Connect as soon as the app starts, when the user asked for it. */
+export function autoConnectEnabled(): boolean {
+  return autoConnectPreference.get();
+}
+
 const PER_APP_OFF: PerAppProxy = { mode: "off", apps: [] };
 
 export function parsePerAppProxy(value: unknown): PerAppProxy {
@@ -121,6 +132,34 @@ export function perAppProxy(): PerAppProxy {
 }
 
 // ---- "Russia direct" ----
+
+const UKRAINIAN_TIME_ZONES = new Set(["Europe/Kyiv", "Europe/Kiev", "Europe/Uzhgorod", "Europe/Zaporozhye"]);
+
+/** The system time zone is Ukraine's (the dashboard's settings screen checks the same list). */
+export function inUkrainianTimeZone(): boolean {
+  try {
+    return UKRAINIAN_TIME_ZONES.has(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return false;
+  }
+}
+
+const allThroughVpnPreference = new Preference<boolean | null>(
+  "vpn4tv-all-through-vpn",
+  null,
+  (value) => (typeof value === "boolean" ? value : null),
+);
+
+/**
+ * "Everything through VPN". Off by default: Russian sites and services go
+ * direct ("Russia direct"), for everyone without a question, updated installs
+ * included. On by default in Ukrainian time zones, where Russian sites are
+ * blocked locally, until the user picks a side: the default is read anew while
+ * the setting has no entry.
+ */
+export function allThroughVpnEnabled(): boolean {
+  return allThroughVpnPreference.get() ?? inUkrainianTimeZone();
+}
 
 /** What our server said about "Russia direct" for a subscription. */
 interface RuDirectHeaders {

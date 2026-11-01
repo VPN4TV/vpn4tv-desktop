@@ -28,7 +28,7 @@ import { registerProfileEditorWindows } from "./profileEditorWindows";
 import { scheduleCrashReportUpload } from "./crashUpload";
 import { importPastedContent, registerProfiles, startSelectedProfile } from "./profiles";
 import { registerOnboarding } from "./vpn4tv/onboardingService";
-import { Preference } from "./database";
+import { autoConnectEnabled } from "./vpn4tv";
 import { registerSetup } from "./repair";
 import { registerReports } from "./reports";
 import { resourcePath } from "./resources";
@@ -52,12 +52,6 @@ import {
   MAIN_WINDOW_MINIMUM_WIDTH,
   restoredMainWindowBounds,
 } from "./windowState";
-
-/** VPN4TV: connect as soon as the app starts, when the user asked for it. */
-function autoConnectEnabled(): boolean {
-  return new Preference<boolean>("vpn4tv-auto-connect", false, (value) => value === true).get();
-}
-
 
 let handlingFatalError = false;
 
