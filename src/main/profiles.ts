@@ -12,6 +12,7 @@ import {
   convertSubscription,
   hwid,
   forgetSubscriptionInfo,
+  rememberRuDirect,
   rememberSubscriptionInfo,
   subscriptionHeaders,
   subscriptionInfo,
@@ -211,10 +212,17 @@ async function readLimitedResponse(
   return Buffer.concat(chunks, totalLength).toString("utf-8");
 }
 
+async function fetchRemoteContent(remoteUrl: string, profileId?: string): Promise<string> {
+  return (await fetchRemoteProfile(remoteUrl, profileId)).content;
+}
+
 // Mirrors libbox's HTTPClient (experimental/libbox/http.go): SetURL turns
 // URL userinfo into a basic Authorization header, and Execute accepts only
 // HTTP 200, reporting other statuses as "HTTP <Status>: <body>".
-async function fetchRemoteContent(remoteUrl: string, profileId?: string): Promise<string> {
+async function fetchRemoteProfile(
+  remoteUrl: string,
+  profileId?: string,
+): Promise<{ content: string; routingChanged: boolean }> {
   const requestUrl = new URL(remoteUrl);
   // VPN4TV: identify the install and the platform — the backend tailors the
   // returned subscription on x-device-os.
@@ -253,9 +261,13 @@ async function fetchRemoteContent(remoteUrl: string, profileId?: string): Promis
   if (profileId !== undefined) {
     rememberSubscriptionInfo(profileId, response.headers);
   }
-  return convertSubscription(
+  const content = convertSubscription(
     await readLimitedResponse(response, MAXIMUM_REMOTE_PROFILE_BYTES),
   );
+  // VPN4TV: what our server says about "Russia direct" for this subscription
+  // (x-vpn4tv-ru-direct, x-vpn4tv-ru-vpn), from a successful response only.
+  const routingChanged = profileId !== undefined && rememberRuDirect(profileId, response.headers);
+  return { content, routingChanged };
 }
 
 async function insertProfile(
@@ -405,12 +417,18 @@ function updateRemoteProfile(id: string): Promise<void> {
     if (profile.type !== "remote" || !profile.remoteUrl) {
       throw new Error("not a remote profile");
     }
-    const remoteContent = await fetchRemoteContent(profile.remoteUrl, profile.id);
+    const { content: remoteContent, routingChanged } = await fetchRemoteProfile(
+      profile.remoteUrl,
+      profile.id,
+    );
     await checkConfig(remoteContent);
     try {
       const oldContent = await readFile(contentPath(profile.id), "utf-8");
       if (oldContent !== remoteContent) {
         await atomicWriteFile(contentPath(profile.id), remoteContent);
+        await reloadIfSelectedAndRunning(profile.id);
+      } else if (routingChanged) {
+        // VPN4TV: only what our server says about "Russia direct" changed.
         await reloadIfSelectedAndRunning(profile.id);
       }
     } catch (error) {

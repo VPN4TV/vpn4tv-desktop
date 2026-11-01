@@ -16,6 +16,7 @@ import {
   type SubscriptionUserInfo,
 } from "./onboarding";
 import { parseSubscription } from "./parser";
+import { parseNameList } from "./russiaDirect";
 
 const hwidPreference = new Preference<string>("vpn4tv_hwid", "", (value) =>
   typeof value === "string" ? value : "",
@@ -119,6 +120,60 @@ export function perAppProxy(): PerAppProxy {
   return perAppPreference.get();
 }
 
+// ---- "Russia direct" ----
+
+/** What our server said about "Russia direct" for a subscription. */
+interface RuDirectHeaders {
+  /** x-vpn4tv-ru-direct: 0 — no Russia direct for this subscription. */
+  off: boolean;
+  /** x-vpn4tv-ru-vpn — more names kept on the VPN. */
+  extra: string[];
+}
+
+function ruDirectPreference(profileId: string): Preference<RuDirectHeaders | null> {
+  return new Preference<RuDirectHeaders | null>(`vpn4tv_ru_direct_${profileId}`, null, (value) => {
+    const candidate = value as Partial<RuDirectHeaders> | null;
+    if (typeof candidate !== "object" || candidate === null) {
+      return null;
+    }
+    return {
+      off: candidate.off === true,
+      extra: Array.isArray(candidate.extra)
+        ? candidate.extra.filter((name): name is string => typeof name === "string")
+        : [],
+    };
+  });
+}
+
+/**
+ * Keep what our server said about "Russia direct" for this profile, from a
+ * successful response. Returns whether it differs from what was kept (nothing
+ * kept = on, no extra names), so only a real change asks for a reload.
+ */
+export function rememberRuDirect(profileId: string, headers: Headers): boolean {
+  const next: RuDirectHeaders = {
+    off: headers.get("x-vpn4tv-ru-direct")?.trim() === "0",
+    extra: parseNameList(headers.get("x-vpn4tv-ru-vpn")),
+  };
+  const preference = ruDirectPreference(profileId);
+  const kept = preference.get() ?? { off: false, extra: [] };
+  const changed = kept.off !== next.off || kept.extra.join(",") !== next.extra.join(",");
+  if (changed) {
+    preference.set(next.off || next.extra.length > 0 ? next : null);
+  }
+  return changed;
+}
+
+/** Our server turned "Russia direct" off for this profile. */
+export function ruDirectOff(profileId: string): boolean {
+  return ruDirectPreference(profileId).get()?.off === true;
+}
+
+/** Names our server keeps on the VPN for this profile, besides the built-in exceptions. */
+export function ruVpnExtra(profileId: string): string[] {
+  return ruDirectPreference(profileId).get()?.extra ?? [];
+}
+
 // ---- per-profile subscription metadata (expiry / traffic) ----
 
 
@@ -151,4 +206,5 @@ export function subscriptionInfo(profileId: string): SubscriptionUserInfo | null
 
 export function forgetSubscriptionInfo(profileId: string): void {
   userInfoPreference(profileId).set(null);
+  ruDirectPreference(profileId).set(null);
 }
