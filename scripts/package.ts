@@ -605,7 +605,13 @@ function notarizeDiskImage(identity: string, artifactArchitecture: string) {
   }
   runChecked("codesign", ["--sign", `Developer ID Application: ${identity}`, "--timestamp", imagePath]);
   const credentials =
-    process.env.APPLE_API_KEY !== undefined
+    process.env.APPLE_KEYCHAIN_PROFILE !== undefined
+      ? [
+          "--keychain-profile",
+          process.env.APPLE_KEYCHAIN_PROFILE,
+          ...(process.env.APPLE_KEYCHAIN !== undefined ? ["--keychain", process.env.APPLE_KEYCHAIN] : []),
+        ]
+      : process.env.APPLE_API_KEY !== undefined
       ? [
           "--key",
           process.env.APPLE_API_KEY,
@@ -660,16 +666,28 @@ function macSigningIdentity(): string | null {
  * one gitignored file:
  *
  *   "mac": { "appleId": "…", "appSpecificPassword": "…", "teamId": "…" }
+ *   "mac": { "keychainProfile": "…" }
+ *
+ * A keychain profile is the one `xcrun notarytool store-credentials <name>`
+ * saved: the password stays in the login keychain and never reaches the
+ * environment or a file.
  */
 function macNotarizationConfigured(): boolean {
   applyMacSigningConfiguration();
-  const { APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER } =
-    process.env;
+  const {
+    APPLE_ID,
+    APPLE_APP_SPECIFIC_PASSWORD,
+    APPLE_TEAM_ID,
+    APPLE_API_KEY,
+    APPLE_API_KEY_ID,
+    APPLE_API_ISSUER,
+    APPLE_KEYCHAIN_PROFILE,
+  } = process.env;
   const withAppleId =
     APPLE_ID !== undefined && APPLE_APP_SPECIFIC_PASSWORD !== undefined && APPLE_TEAM_ID !== undefined;
   const withApiKey =
     APPLE_API_KEY !== undefined && APPLE_API_KEY_ID !== undefined && APPLE_API_ISSUER !== undefined;
-  return withAppleId || withApiKey;
+  return withAppleId || withApiKey || (APPLE_KEYCHAIN_PROFILE !== undefined && APPLE_KEYCHAIN_PROFILE !== "");
 }
 
 function applyMacSigningConfiguration() {
@@ -698,6 +716,7 @@ function applyMacSigningConfiguration() {
   assign("apiKey", "APPLE_API_KEY");
   assign("apiKeyId", "APPLE_API_KEY_ID");
   assign("apiIssuer", "APPLE_API_ISSUER");
+  assign("keychainProfile", "APPLE_KEYCHAIN_PROFILE");
   const identity = configuration.identity;
   if (typeof identity === "string" && identity !== "" && process.env.VPN4TV_MAC_IDENTITY === undefined) {
     process.env.VPN4TV_MAC_IDENTITY = identity;
@@ -725,12 +744,17 @@ async function packageMac() {
         " Gatekeeper will block it on other Macs (Privacy & Security -> Open Anyway).",
     );
   } else if (!notarize) {
-    console.warn(
-      "[package] signing with " +
-        identity +
-        " but NOT notarising: set APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID" +
-        " (or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER).",
-    );
+    const message =
+      "signing with " +
+      identity +
+      " but NOT notarising: set APPLE_KEYCHAIN_PROFILE (a notarytool store-credentials profile)," +
+      " or APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID" +
+      " (or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER).";
+    // A release must not ship a DMG Gatekeeper rejects: release scripts set this.
+    if (process.env.VPN4TV_REQUIRE_NOTARIZATION === "1") {
+      throw new Error(message);
+    }
+    console.warn(`[package] ${message}`);
   }
   buildApplication();
   for (const architecture of selected) {
