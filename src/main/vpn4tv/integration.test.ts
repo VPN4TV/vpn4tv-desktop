@@ -47,12 +47,12 @@ test("a bridge transport travels inside the profile for the core to start", () =
   const profile = JSON.parse(convertSubscription(subscription));
   assert.ok(profile.vpn4tv?.xray, "xhttp must be handed to the xray bridge");
   const outbound = profile.outbounds.find((entry: any) => entry.tag === "C");
-  assert.equal(outbound.type, "socks");
+  assert.equal(outbound.type, "vless");
   assert.equal(outbound.server, "127.0.0.1", "desktop loopback, not the mobile 127.0.0.127");
   assert.equal(
     outbound.server_port,
     profile.vpn4tv.xray.inbounds[0].port,
-    "the socks outbound and the bridge listener must agree on the port",
+    "the outbound and the bridge listener must agree on the port",
   );
 });
 

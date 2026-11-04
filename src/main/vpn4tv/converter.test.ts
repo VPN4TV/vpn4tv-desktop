@@ -43,11 +43,18 @@ test("vless xhttp goes through the xray bridge", () => {
 
   const config = parseGenerated([proxy]);
   const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "XH");
-  assert.equal(outbound.type, "socks", "the bridge is reached over loopback socks");
+  assert.equal(outbound.type, "vless", "the bridge is reached over loopback VLESS, UDP as XUDP");
+  assert.equal(outbound.packet_encoding, "xudp");
+  assert.equal(outbound.network, undefined, "no network limit: the bridge carries UDP");
   assert.equal(outbound.server, BRIDGE_PORTS.socksHost);
   assert.equal(outbound.server_port, BRIDGE_PORTS.base);
   assert.ok(config[BRIDGE_CONFIG_KEY].xray, "bridge config must travel with the profile");
-  assert.equal(config[BRIDGE_CONFIG_KEY].xray.inbounds[0].port, BRIDGE_PORTS.base);
+  const inbound = config[BRIDGE_CONFIG_KEY].xray.inbounds[0];
+  assert.equal(inbound.port, BRIDGE_PORTS.base);
+  assert.equal(inbound.protocol, "vless");
+  assert.deepEqual(inbound.settings.clients, [{ id: outbound.uuid }], "one client id on both sides");
+  assert.match(outbound.uuid, /^[0-9a-f-]{36}$/);
+  assert.equal(config.route.rules.some((rule: any) => rule.network === "udp"), false, "UDP goes through the bridge");
 });
 
 test("trusttunnel: the link goes to the bridge whole", () => {
@@ -58,8 +65,14 @@ test("trusttunnel: the link goes to the bridge whole", () => {
   const config = parseGenerated([proxy]);
   const outbound = (config.outbounds as any[]).find((entry) => entry.tag === proxy.tag);
   assert.equal(outbound.type, "socks");
+  assert.equal(outbound.network, "tcp", "the client's UDP relay would take any local process");
   assert.equal(outbound.server_port, BRIDGE_PORTS.base + BRIDGE_PORTS.trusttunnelOffset);
   assert.equal(config[BRIDGE_CONFIG_KEY].trusttunnel.endpoints[0].url, link);
+  // No proxy carries UDP: refused last, the clock sync direct just ahead of it.
+  const rules = config.route.rules as any[];
+  assert.deepEqual(rules.at(-1), { network: "udp", action: "reject" });
+  assert.deepEqual(rules.at(-2), { network: "udp", port: 123, action: "route", outbound: "direct" });
+  assert.equal(rules.some((rule) => rule.network === "udp" && rule.outbound === "direct" && rule.port === undefined), false);
   assert.equal(parseSubscription("tt://?not base64!").length, 0);
 });
 
@@ -112,6 +125,9 @@ test("shadowsocks: plain is native, prefixed goes to the outline bridge", () => 
   const config = parseGenerated([outline]);
   const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "Outline");
   assert.equal(outbound.server_port, BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset);
+  assert.deepEqual(outbound.udp_over_tcp, { enabled: true, version: 2 }, "UDP rides inside the TCP connection");
+  assert.equal(outbound.network, undefined);
+  assert.equal(config.dns.servers[0].detour, "select", "DNS goes through the tunnel, bridges too");
   assert.equal(
     config[BRIDGE_CONFIG_KEY].outline.endpoints[0].port,
     BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset,
@@ -239,6 +255,8 @@ test("wg:// URI becomes an AmneziaWG INI on the wireproxy bridge", () => {
   const outbound = (config.outbounds as any[]).find((entry) => entry.tag === "WG");
   assert.equal(outbound.server_port, BRIDGE_PORTS.base + BRIDGE_PORTS.wireguardOffset);
   assert.equal(outbound.domain_strategy, "ipv4_only");
+  assert.deepEqual(outbound.udp_over_tcp, { enabled: true, version: 2 });
+  assert.equal(config.route.rules.some((rule: any) => rule.network === "udp"), false, "AmneziaWG carries UDP");
   assert.ok(config[BRIDGE_CONFIG_KEY].wireproxy.endpoints[0].ini.includes("PrivateKey"));
   assert.equal(config.dns.strategy, "ipv4_only", "an all-TCP-bridged profile resolves v4 only");
 });

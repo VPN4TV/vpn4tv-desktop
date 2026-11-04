@@ -8,6 +8,8 @@
 // the private "vpn4tv" key, and the core starts them (see the Go package
 // experimental/vpn4tvbridge in our sing-box fork).
 
+import { randomUUID } from "node:crypto";
+
 import { type Json, str } from "./support";
 import { SINGBOX_PASSTHROUGH_TAG, lastDns, type ProxyConfig } from "./parser";
 
@@ -71,24 +73,29 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
 
   const proxies = input.map((proxy) => ({ ...proxy, outbound: { ...proxy.outbound } }));
 
-  // xray-managed (xhttp/splithttp)
+  // xray-managed (xhttp/splithttp). TCP and UDP: UDP rides inside the TCP
+  // connection to the bridge as XUDP (see xrayBridgeOutbound). One client id
+  // per profile, in sing-box's outbound and in the bridge's inbound.
   const xrayOutbounds: Json[] = [];
+  const xrayUuid = randomUUID();
   for (const proxy of proxies) {
     if (!proxy.xrayOutbound) {
       continue;
     }
     const port = BRIDGE_PORTS.base + xrayOutbounds.length;
     xrayOutbounds.push(proxy.xrayOutbound);
-    proxy.outbound = socksLoopback(proxy.tag, port);
+    proxy.outbound = xrayBridgeOutbound(proxy.tag, port, xrayUuid);
   }
 
-  // outline-managed (ss SIP002 with a prefix, or a dynamic ssconf:// key)
+  // outline-managed (ss SIP002 with a prefix, or a dynamic ssconf:// key). TCP
+  // and UDP: UDP rides inside the TCP connection to the bridge (udp_over_tcp),
+  // and the bridge sends it to the Outline server as Shadowsocks UDP.
   const outlineUrls: { url?: string; dynamicUrl?: string }[] = [];
   for (const proxy of proxies) {
     if (proxy.outlineDynamicUrl) {
       const dynamicPort = BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset + outlineUrls.length;
       outlineUrls.push({ dynamicUrl: proxy.outlineDynamicUrl });
-      proxy.outbound = socksLoopback(proxy.tag, dynamicPort);
+      proxy.outbound = socksLoopback(proxy.tag, dynamicPort, true);
       continue;
     }
     if (!proxy.outlineUrl) {
@@ -96,10 +103,12 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
     }
     const port = BRIDGE_PORTS.base + BRIDGE_PORTS.outlineOffset + outlineUrls.length;
     outlineUrls.push({ url: proxy.outlineUrl });
-    proxy.outbound = socksLoopback(proxy.tag, port);
+    proxy.outbound = socksLoopback(proxy.tag, port, true);
   }
 
-  // AmneziaWG: ipv4_only so sing-box resolves before CONNECT
+  // AmneziaWG: ipv4_only so sing-box resolves before CONNECT. TCP and UDP, UDP
+  // inside the TCP connection like Outline's; the bridge sends it through the
+  // tunnel's netstack.
   const wireguardInis: string[] = [];
   for (const proxy of proxies) {
     if (!proxy.awgIni) {
@@ -107,11 +116,11 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
     }
     const port = BRIDGE_PORTS.base + BRIDGE_PORTS.wireguardOffset + wireguardInis.length;
     wireguardInis.push(proxy.awgIni);
-    proxy.outbound = { ...socksLoopback(proxy.tag, port), domain_strategy: "ipv4_only" };
+    proxy.outbound = { ...socksLoopback(proxy.tag, port, true), domain_strategy: "ipv4_only" };
   }
 
   // olcRTC: the link goes to the bridge whole; sing-box resolves before CONNECT,
-  // the far end only dials what the SOCKS request names.
+  // the far end only dials what the SOCKS request names. TCP only by design.
   const olcrtcUrls: string[] = [];
   for (const proxy of proxies) {
     if (!proxy.olcrtcUrl) {
@@ -122,7 +131,8 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
     proxy.outbound = { ...socksLoopback(proxy.tag, port), domain_strategy: "ipv4_only" };
   }
 
-  // TrustTunnel: the official client next to the daemon, one per link.
+  // TrustTunnel: the official client next to the daemon, one per link. TCP
+  // only: the client's SOCKS UDP relay takes datagrams from any local process.
   const ttUrls: string[] = [];
   for (const proxy of proxies) {
     if (!proxy.ttUrl) {
@@ -160,7 +170,7 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
 
   const bridges: Json = {};
   if (xrayOutbounds.length > 0) {
-    bridges.xray = buildXrayConfig(xrayOutbounds);
+    bridges.xray = buildXrayConfig(xrayOutbounds, xrayUuid);
   }
   if (outlineUrls.length > 0) {
     bridges.outline = buildEndpointConfig(
@@ -193,18 +203,98 @@ export function generateConfig(input: ProxyConfig[], options: GenerateOptions = 
   return JSON.stringify(config, null, 2);
 }
 
-function socksLoopback(tag: string, port: number): Json {
+/**
+ * A socks outbound to a bridge on the loopback. With udpOverTcp, sing-box's UDP
+ * over TCP: the datagrams travel framed inside the same TCP connection (the
+ * core's bridges serve it since bridge-udp), so nothing listens for UDP on the
+ * loopback. Without it the outbound carries TCP only.
+ */
+function socksLoopback(tag: string, port: number, udpOverTcp = false): Json {
   return {
     type: "socks",
     tag,
     server: BRIDGE_PORTS.socksHost,
     server_port: port,
     version: "5",
-    network: "tcp",
+    ...(udpOverTcp ? { udp_over_tcp: { enabled: true, version: 2 } } : { network: "tcp" }),
     // No bind_interface: "lo" is a Linux/Android-ism (macOS calls it lo0 and
     // Windows has no such name). The bridge lives in the daemon process, whose
     // own sockets auto_route already excludes, so there is no routing loop.
   };
+}
+
+/**
+ * sing-box's outbound to the xray bridge inbound on port: VLESS without TLS over
+ * the loopback. UDP goes as XUDP inside the same TCP connection, which xray
+ * takes on through the outbound it was given; no network limit. As Android's
+ * ConfigGenerator.toXrayBridgeOutbound.
+ */
+function xrayBridgeOutbound(tag: string, port: number, uuid: string): Json {
+  return {
+    type: "vless",
+    tag,
+    server: BRIDGE_PORTS.socksHost,
+    server_port: port,
+    uuid,
+    packet_encoding: "xudp",
+  };
+}
+
+/** Its outbound goes to one of our local bridges (xray included): DNS through it goes over TCP. */
+function reachesBridge(proxy: ProxyConfig): boolean {
+  return (
+    proxy.xrayOutbound !== undefined ||
+    proxy.outlineUrl !== undefined ||
+    proxy.outlineDynamicUrl !== undefined ||
+    proxy.awgIni !== undefined ||
+    proxy.olcrtcUrl !== undefined ||
+    proxy.ttUrl !== undefined
+  );
+}
+
+/**
+ * The TCP form of a DNS server type, for DNS that must not go over UDP: plain
+ * DNS over TCP for udp, DNS over TLS for DNS over QUIC, DoH over HTTP/2 for DoH
+ * over HTTP/3.
+ */
+export function tcpDnsType(type: string): string {
+  switch (type) {
+    case "udp":
+      return "tcp";
+    case "quic":
+      return "tls";
+    case "h3":
+      return "https";
+    default:
+      return type;
+  }
+}
+
+/**
+ * Whether sing-box can send UDP through outbound, one of a generated profile's
+ * proxies: the socks outbounds to olcRTC and TrustTunnel carry TCP only, the
+ * vless outbound to the xray bridge carries XUDP, Outline and AmneziaWG carry
+ * UDP over TCP, naive only with UDP over TCP on, http never.
+ */
+export function carriesUdp(outbound: Json): boolean {
+  switch (str(outbound, "type")) {
+    case "selector":
+    case "urltest":
+    case "direct":
+    case "block":
+    case "dns":
+    case "http":
+      return false;
+    case "naive": {
+      const udpOverTcp = outbound.udp_over_tcp;
+      return (
+        udpOverTcp === true ||
+        (typeof udpOverTcp === "object" && udpOverTcp !== null && (udpOverTcp as Json).enabled === true)
+      );
+    }
+    default:
+      return str(outbound, "network") !== "tcp";
+  }
 }
 
 /** sing-box requires unique outbound tags. */
@@ -225,17 +315,19 @@ function dedupeTags(proxies: ProxyConfig[]): void {
   }
 }
 
+/** Routed through a local bridge other than xray: what FakeDNS and the IPv4-only strategy look at. */
 function allTcpBridged(proxies: ProxyConfig[]): boolean {
   return proxies.every(
     (proxy) =>
       proxy.outlineUrl !== undefined ||
+      proxy.outlineDynamicUrl !== undefined ||
       proxy.awgIni !== undefined ||
       proxy.olcrtcUrl !== undefined ||
       proxy.ttUrl !== undefined,
   );
 }
 
-/** All-TCP-bridged profiles resolve upstream, so fakeip has nothing to do. */
+/** FakeDNS stays off for profiles made only of bridges, as before. */
 function fakeDnsPossible(proxies: ProxyConfig[]): boolean {
   return !allTcpBridged(proxies);
 }
@@ -255,19 +347,21 @@ function parseDnsUrl(url: string): { type: string; server: string } {
 }
 
 function buildDns(proxies: ProxyConfig[], fakeDns: boolean): Json {
+  // DNS goes through the tunnel ("select") for every profile. Profiles made only
+  // of bridges used to resolve without a detour, i.e. around the tunnel with the
+  // real address, because no bridge carried UDP. Where a bridge can be picked,
+  // the remote server is asked over TCP.
   const tcpOnly = allTcpBridged(proxies);
   const remote = parseDnsUrl(lastDns.remoteDns);
   const direct = parseDnsUrl(lastDns.directDns);
 
   const remoteServer: Json = {
-    type: remote.type,
+    type: proxies.some(reachesBridge) ? tcpDnsType(remote.type) : remote.type,
     tag: "dns-remote",
     server: remote.server,
     domain_resolver: "dns-direct",
+    detour: "select",
   };
-  if (!tcpOnly) {
-    remoteServer.detour = "select";
-  }
   const servers: Json[] = [remoteServer, { type: direct.type, tag: "dns-direct", server: direct.server }];
   if (fakeDns) {
     servers.push({
@@ -324,8 +418,13 @@ function buildRoute(proxies: ProxyConfig[], lanBypass: boolean, perApp?: PerAppP
   } else if (perAppMode === "include") {
     rules.push({ process_name: apps, outbound: "select" });
   }
-  if (allTcpBridged(proxies)) {
-    rules.push({ network: "udp", outbound: "direct" });
+  // UDP never goes "direct" behind the user's back: that sent QUIC, calls and
+  // WebRTC around the tunnel with the real address. A profile where no proxy
+  // carries UDP (only olcRTC or TrustTunnel) refuses UDP outright, last: apps
+  // take it as "no QUIC" and fall back to TCP at once. The clock sync (NTP)
+  // goes direct just ahead of it; Russia direct goes ahead of both.
+  if (!proxies.some((proxy) => carriesUdp(proxy.outbound))) {
+    rules.push(ntpDirectRule(), udpRejectRule());
   }
   return {
     rules,
@@ -336,21 +435,36 @@ function buildRoute(proxies: ProxyConfig[], lanBypass: boolean, perApp?: PerAppP
   };
 }
 
+/** The clock sync goes direct where UDP is refused: a clock that is off fails every TLS handshake. */
+export function ntpDirectRule(): Json {
+  return { network: "udp", port: 123, action: "route", outbound: "direct" };
+}
+
+/** The refusal of UDP in a profile where no proxy carries it; the last generated rule. */
+export function udpRejectRule(): Json {
+  return { network: "udp", action: "reject" };
+}
+
 // ---- bridge configs (shapes the libbox entry points already expect) ----
 
-function buildXrayConfig(xrayOutbounds: Json[]): Json {
+/**
+ * One VLESS inbound per xray-managed outbound, not SOCKS5: sing-box's vless
+ * outbound sends UDP as XUDP inside the same TCP connection, so UDP gets through
+ * without a UDP port on the loopback, and the client id covers it as it covers TCP.
+ */
+function buildXrayConfig(xrayOutbounds: Json[], uuid: string): Json {
   const inbounds: Json[] = [];
   const outbounds: Json[] = [];
   const rules: Json[] = [];
   xrayOutbounds.forEach((xrayOutbound, index) => {
-    const inboundTag = `socks-in-${index}`;
+    const inboundTag = `vless-in-${index}`;
     const outboundTag = `proxy-${index}`;
     inbounds.push({
       tag: inboundTag,
       listen: BRIDGE_PORTS.socksHost,
       port: BRIDGE_PORTS.base + index,
-      protocol: "socks",
-      settings: { auth: "noauth", udp: true },
+      protocol: "vless",
+      settings: { clients: [{ id: uuid }], decryption: "none" },
       sniffing: { enabled: true, destOverride: ["http", "tls"] },
     });
     outbounds.push({ ...xrayOutbound, tag: outboundTag });

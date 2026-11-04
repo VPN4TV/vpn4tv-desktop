@@ -299,15 +299,26 @@ test("all the other shapes the generator makes", () => {
   assert.ok(xhttp.vpn4tv?.xray);
 });
 
-test("TCP bridges only: the UDP rule and ipv4_only stay", () => {
+test("bridges only: ipv4_only stays, Outline and AmneziaWG carry UDP so nothing refuses it", () => {
   const input = parse(TCP_BRIDGES);
   const out = parse(applyRussiaDirect(TCP_BRIDGES, ON).content);
   assertBlock(input, out, { withSets: true });
   assert.equal(out.dns.strategy, "ipv4_only");
-  assert.ok(routeRules(out).some((rule) => rule.network === "udp" && rule.outbound === "direct"));
+  assert.equal(routeRules(out).some((rule) => rule.network === "udp"), false);
   for (const bridge of ["outline", "wireproxy", "olcrtc", "trusttunnel"]) {
     assert.ok(out.vpn4tv?.[bridge], bridge);
   }
+});
+
+test("TCP-only bridges: Russia direct goes ahead of the clock sync and the UDP refusal", () => {
+  const out = parse(applyRussiaDirect(base(["tt", "olcrtc"]), ON).content);
+  const rules = routeRules(out);
+  assert.deepEqual(rules.at(-1), { network: "udp", action: "reject" });
+  assert.deepEqual(rules.at(-2), { network: "udp", port: 123, action: "route", outbound: "direct" });
+  const torrents = rules.findIndex((rule) => JSON.stringify(rule).includes("bittorrent"));
+  assert.ok(torrents >= 0 && torrents < rules.length - 2, "torrents direct before the refusal");
+  const geoip = rules.findIndex((rule) => JSON.stringify(rule).includes("geoip"));
+  assert.ok(geoip >= 0 && geoip < rules.length - 2, "Russian addresses direct before the refusal");
 });
 
 test("Everything through VPN and our server's off switch leave only the torrent rule", () => {

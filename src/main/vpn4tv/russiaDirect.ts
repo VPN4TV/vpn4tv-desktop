@@ -371,7 +371,11 @@ function isFakeDnsRule(rule: Json): boolean {
   );
 }
 
-/** Ahead of the first per-app rule, else at the end. */
+/**
+ * Ahead of the first per-app rule, else ahead of the generator's NTP and UDP
+ * refusal rules (a profile where no proxy carries UDP), else at the end: Russian
+ * UDP and torrents still go direct where UDP is refused.
+ */
 function routeInsertionIndex(rules: unknown[]): number {
   const index = rules.findIndex((entry) => {
     const rule = asObject(entry);
@@ -379,10 +383,23 @@ function routeInsertionIndex(rules: unknown[]): number {
       rule !== null &&
       (rule.process_name !== undefined ||
         rule.process_path !== undefined ||
-        rule.process_path_regex !== undefined)
+        rule.process_path_regex !== undefined ||
+        isUdpRefusalRule(rule))
     );
   });
   return index < 0 ? rules.length : index;
+}
+
+/** The generator's NTP rule or its UDP refusal (generator.ts ntpDirectRule / udpRejectRule). */
+function isUdpRefusalRule(rule: Json): boolean {
+  if (rule.network !== "udp") {
+    return false;
+  }
+  const keys = Object.keys(rule).sort().join(",");
+  return (
+    (keys === "action,network" && rule.action === "reject") ||
+    (keys === "action,network,outbound,port" && rule.port === 123 && rule.outbound === DIRECT)
+  );
 }
 
 function allOf(...rules: Json[]): Json {
