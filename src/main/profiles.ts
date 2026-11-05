@@ -5,7 +5,17 @@ import { basename, join } from "node:path";
 
 import { pickApplication, runningApplications } from "./vpn4tv/applications";
 import { decodeVpn4tvLink } from "./vpn4tv/parser";
-import { injectProbedDns, probeDns } from "./vpn4tv/dns";
+import { applyBridgeAuth } from "./vpn4tv/bridgeAuth";
+import {
+  type ResolvedHostsStore,
+  hasFakeDns,
+  injectProbedDns,
+  injectResolvedHosts,
+  preResolveHosts,
+  probeDns,
+  serverHosts,
+  stripFakeDns,
+} from "./vpn4tv/dns";
 import { applyIPv6Support } from "./vpn4tv/ipv6";
 import { hasDynamicOutlineKeys, resolveDynamicOutlineKeys } from "./vpn4tv/outlineDynamic";
 import { usableRuleSets } from "./vpn4tv/russiaDirect";
@@ -459,6 +469,31 @@ function runServiceStart<Result>(operation: () => Promise<Result>): Promise<Resu
 
 /** This run of the app has started (or is starting) the service itself. */
 let startedThisSession = false;
+/**
+ * Set by the FakeDNS self-check when the proxy works and the fakeip path does
+ * not: the starts of this session go without FakeDNS. A connect clears it, as
+ * on Android.
+ */
+let fakeDnsAutoDisabled = false;
+
+/** The last DoH answers for the server names, between starts and runs. */
+const resolvedHostsStore: ResolvedHostsStore = {
+  async load() {
+    const parsed = JSON.parse(await readFile(join(app.getPath("userData"), "dns_prefetch.json"), "utf-8")) as unknown;
+    const answers: Record<string, string[]> = {};
+    if (typeof parsed === "object" && parsed !== null) {
+      for (const [host, addresses] of Object.entries(parsed)) {
+        if (Array.isArray(addresses) && addresses.every((address) => typeof address === "string")) {
+          answers[host] = addresses;
+        }
+      }
+    }
+    return answers;
+  },
+  async save(answers) {
+    await atomicWriteFile(join(app.getPath("userData"), "dns_prefetch.json"), JSON.stringify(answers));
+  },
+};
 /** A start of ours is talking to the daemon right now. */
 let serviceStartRunning = false;
 
@@ -521,7 +556,20 @@ async function startServiceNow(
     // the start aborts with "set ipv6 address: Element not found".
     // The config without "Russia direct": what a start that fails with it is
     // retried with, and what 1.0.0-beta.13 ran.
-    const base = applyIPv6Support(injectProbedDns(content, await probeDns()));
+    // VPN4TV: and resolve the servers written by name through the DoH chain,
+    // pinning the answers (sing-box has no failover between DNS servers). The
+    // probe and the names run side by side, each bounded.
+    if (request.newSession === true) {
+      fakeDnsAutoDisabled = false;
+    }
+    const probed = probeDns();
+    const pinned = preResolveHosts(serverHosts(content), resolvedHostsStore);
+    let transformed = injectResolvedHosts(injectProbedDns(content, await probed), await pinned);
+    if (fakeDnsAutoDisabled) {
+      transformed = stripFakeDns(transformed);
+    }
+    // VPN4TV: the bridges' SOCKS5 inbounds want a password (bridgeAuth.ts).
+    const base = applyBridgeAuth(applyIPv6Support(transformed));
     if (request.newSession === true) {
       russiaDirect.newSession();
     }
@@ -581,6 +629,9 @@ async function startServiceNow(
     if (russiaDirect.claimDnsCheck(ran)) {
       void runDnsRuSelfCheck();
     }
+    if (!fakeDnsAutoDisabled && hasFakeDns(ran.content)) {
+      void runFakeDnsSelfCheck();
+    }
   } finally {
     serviceStartRunning = false;
   }
@@ -634,6 +685,77 @@ async function runDnsRuSelfCheck(): Promise<void> {
     await reloadSelectedIfRunning();
   } catch (error) {
     console.warn(`vpn4tv: dns-ru health check error: ${errorMessage(error)}`);
+  }
+}
+
+/**
+ * A name through the tunnel the way an application reaches it: the system
+ * resolver's query is hijacked by the core and answered from FakeDNS, the
+ * connection to the fake address is sniffed and sent through the proxy. Any
+ * HTTP answer means the fakeip path works. As Android's
+ * probeReachableThroughTunnel.
+ */
+async function probeThroughTunnel(attempts: number, wanted: () => boolean): Promise<boolean> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (!wanted()) {
+      return false;
+    }
+    try {
+      const response = await fetch("https://www.youtube.com/generate_204", {
+        redirect: "manual",
+        headers: { "User-Agent": "VPN4TV-healthcheck" },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.status >= 200 && response.status < 400) {
+        return true;
+      }
+      console.warn(`vpn4tv: tunnel probe attempt ${attempt}/${attempts}: HTTP ${response.status}`);
+    } catch (error) {
+      console.warn(`vpn4tv: tunnel probe attempt ${attempt}/${attempts} failed: ${errorMessage(error)}`);
+    }
+    if (attempt < attempts) {
+      await sleep(3_000);
+    }
+  }
+  return false;
+}
+
+/**
+ * Where the fakeip path is broken on a network, every name an application asks
+ * for leads nowhere. Reach a name through the tunnel after connect; if that
+ * fails while the proxy answers by address, the rest of the session goes
+ * without FakeDNS, and reload. Once per session, as on Android
+ * (runFakeDnsHealthCheck).
+ */
+async function runFakeDnsSelfCheck(): Promise<void> {
+  try {
+    await sleep(3_000); // let the tunnel and the bridges settle
+    const wanted = () => !fakeDnsAutoDisabled && daemonState.status === ServiceStatus_Type.STARTED;
+    if (!wanted()) {
+      return;
+    }
+    if (await probeThroughTunnel(3, wanted)) {
+      console.info("vpn4tv: FakeDNS health check OK — reachable through tunnel");
+      return;
+    }
+    if (!wanted()) {
+      return;
+    }
+    // The name failed: the fakeip path, or the proxy itself? Only the first is
+    // a reason to drop FakeDNS.
+    if (!(await probeProxyAlive(wanted))) {
+      console.warn("vpn4tv: FakeDNS health check: name unreachable but proxy also down — not attributing to FakeDNS");
+      return;
+    }
+    if (!wanted()) {
+      return;
+    }
+    console.warn("vpn4tv: FakeDNS health check FAILED — proxy alive but fakeip path broken; FakeDNS off this session, reloading");
+    writeServiceLogLine({ warn: true, message: "FakeDNS does not work on this network: off until the next connect" });
+    fakeDnsAutoDisabled = true;
+    await reloadSelectedIfRunning();
+  } catch (error) {
+    console.warn(`vpn4tv: FakeDNS health check error: ${errorMessage(error)}`);
   }
 }
 
