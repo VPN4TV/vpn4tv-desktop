@@ -259,25 +259,36 @@ function stageWindowsCronetLibrary(
 
 /**
  * VPN4TV: the TrustTunnel client ships next to the daemon. It is C++/Rust, so
- * it cannot be built into the daemon like the other bridges; the official
- * release binary is fetched once (pinned version and checksum) and staged
- * into bin/ for electron-builder. The daemon looks for it beside itself.
+ * it cannot be built into the daemon like the other bridges; a release binary
+ * is fetched once (pinned checksum) and staged into bin/ for electron-builder.
+ * The daemon looks for it beside itself.
+ *
+ * Our build (v1.1.5 of VPN4TV/trusttunnel-client, branch vpn4tv-desktop) reads
+ * system_dns_servers, which the core sets to a dead end: the client's own
+ * system DNS proxy listens on loopback with no credentials. The official
+ * binary skips that key; to go back to it, point an entry at
+ * https://github.com/TrustTunnel/TrustTunnelClient/releases/download/v1.1.5.
+ * macOS (arm64 + x86_64) and Linux (zig, musl) are built on the Mac, Windows on
+ * the Windows build box.
  */
-const TRUSTTUNNEL_VERSION = "v1.1.5";
-const TRUSTTUNNEL_ARCHIVES: Record<string, { file: string; sha256: string; member: string }> = {
+const OUR_TRUSTTUNNEL = "https://bell.a4e.ar";
+const TRUSTTUNNEL_ARCHIVES: Record<string, { base: string; file: string; sha256: string; member: string }> = {
   "darwin/universal": {
-    file: "trusttunnel_client-v1.1.5-macos-universal.tar.gz",
-    sha256: "4af128703281b2a9db5ced88138c18078ed7d883563701ead2ff76a88a63c97f",
-    member: "trusttunnel_client-v1.1.5-macos-universal/trusttunnel_client",
+    base: OUR_TRUSTTUNNEL,
+    file: "trusttunnel_client-v1.1.5-vpn4tv.1-macos-universal.tar.gz",
+    sha256: "9dff303d9c1a638ca42d4726724da8886a783beddff9c077c6344584187533f0",
+    member: "trusttunnel_client-v1.1.5-vpn4tv.1-macos-universal/trusttunnel_client",
   },
   "linux/amd64": {
-    file: "trusttunnel_client-v1.1.5-linux-x86_64.tar.gz",
-    sha256: "759557812e7a280183f720e373b374f3fccb95758532cf8a94bea903dec2ca96",
-    member: "trusttunnel_client-v1.1.5-linux-x86_64/trusttunnel_client",
+    base: OUR_TRUSTTUNNEL,
+    file: "trusttunnel_client-v1.1.5-vpn4tv.1-linux-x86_64.tar.gz",
+    sha256: "d1c1b361c7ea9c02d55f804ce9ce1984d8dbac70af284a8d1407a4a1d0d6f61b",
+    member: "trusttunnel_client-v1.1.5-vpn4tv.1-linux-x86_64/trusttunnel_client",
   },
   "windows/amd64": {
-    file: "trusttunnel_client-v1.1.5-windows-x86_64.zip",
-    sha256: "580cdf3735371d86fce22d46a3cce6e65dcc8f4661c3a30a18296a114e70c405",
+    base: OUR_TRUSTTUNNEL,
+    file: "trusttunnel_client-v1.1.5-vpn4tv.1-windows-x86_64.zip",
+    sha256: "6ec156f91ab6e71ebb15a915bd6eaad7011ed6cfc53413d362d8e56baeeb52b0",
     member: "trusttunnel_client.exe",
   },
 };
@@ -302,7 +313,7 @@ async function stageTrustTunnelClient(
   const checksum = () =>
     fs.existsSync(archivePath) ? createHash("sha256").update(fs.readFileSync(archivePath)).digest("hex") : "";
   if (checksum() !== archive.sha256) {
-    const url = `https://github.com/TrustTunnel/TrustTunnelClient/releases/download/${TRUSTTUNNEL_VERSION}/${archive.file}`;
+    const url = `${archive.base}/${archive.file}`;
     console.log(`[package] fetching ${url}`);
     const response = await fetch(url);
     if (!response.ok) {
