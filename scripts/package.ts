@@ -782,6 +782,8 @@ async function packageMac() {
     runChecked("electron-builder", [
       "--mac",
       "dmg",
+      // VPN4TV: the ZIP is what the in-app update (Squirrel.Mac) installs.
+      "zip",
       architecture.builderArchitectureArgument,
       "--config",
       "electron-builder.yml",

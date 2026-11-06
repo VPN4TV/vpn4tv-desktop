@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, autoUpdater, BrowserWindow, ipcMain } from "electron";
 import { compare, gt, prerelease, valid } from "semver";
 
 import { InstallUpdateResult } from "../shared/gen/experimental/boxdd/desktop_service_pb";
@@ -36,7 +36,25 @@ const WINDOWS_UPDATE_ARCHITECTURES: Partial<Record<NodeJS.Architecture, string[]
   x64: ["x64"],
 };
 const updateArchitectureTokens = WINDOWS_UPDATE_ARCHITECTURES[process.arch];
-const UPDATES_SUPPORTED = process.platform === "win32" && updateArchitectureTokens !== undefined;
+// VPN4TV: macOS too. Electron's autoUpdater (Squirrel.Mac) takes a ZIP of the
+// new app only when it is signed by the same Developer ID, swaps the bundle
+// when the app quits and starts the new one; the system service is upgraded
+// afterwards by the setup screen (version mismatch: Upgrade, administrator
+// password), as after a manual DMG install.
+const MAC_UPDATE_ARCHITECTURES = new Set<NodeJS.Architecture>(["arm64", "x64"]);
+const UPDATES_SUPPORTED =
+  (process.platform === "win32" && updateArchitectureTokens !== undefined) ||
+  (process.platform === "darwin" && MAC_UPDATE_ARCHITECTURES.has(process.arch));
+
+/**
+ * VPN4TV: Squirrel.Mac's JSON feed for this architecture, which our own check
+ * reads too: {currentRelease, releases: [{version, updateTo: {version, name,
+ * notes, pub_date, url, size, prerelease, releaseUrl}}]}. VPN4TV_UPDATE_FEED
+ * points it elsewhere, for the update test.
+ */
+function macFeedURL(): string {
+  return process.env.VPN4TV_UPDATE_FEED || `https://bell.a4e.ar/vpn4tv-macos-${process.arch}-update.json`;
+}
 const APP_IS_PRERELEASE = prerelease(__APP_VERSION__) !== null;
 
 function parseString(value: unknown): string {
@@ -204,15 +222,52 @@ interface AppcastRelease {
   builds: AppcastBuild[];
 }
 
-async function fetchReleases(): Promise<AppcastRelease[]> {
-  const response = await fetch(APPCAST_URL, {
+async function fetchFeed(url: string): Promise<unknown> {
+  const response = await fetch(url, {
     headers: new Headers({ "User-Agent": `VPN4TV/${__APP_VERSION__}` }),
     signal: AbortSignal.timeout(RELEASES_REQUEST_TIMEOUT_MILLISECONDS),
   });
   if (!response.ok) {
     throw new Error(`fetch releases: HTTP ${response.status}`);
   }
-  const feed = (await response.json()) as { releases?: unknown };
+  return response.json();
+}
+
+/** The Mac feed's releases in the appcast's shape, with this machine's build. */
+async function fetchMacReleases(): Promise<AppcastRelease[]> {
+  const feed = (await fetchFeed(macFeedURL())) as { releases?: unknown };
+  if (!Array.isArray(feed.releases)) {
+    throw new Error("update feed has no releases");
+  }
+  const releases: AppcastRelease[] = [];
+  for (const entry of feed.releases) {
+    const updateTo = (entry as { updateTo?: Record<string, unknown> } | null)?.updateTo;
+    if (typeof updateTo !== "object" || updateTo === null) {
+      continue;
+    }
+    if (typeof updateTo.version !== "string" || typeof updateTo.url !== "string" || updateTo.url === "") {
+      continue;
+    }
+    releases.push({
+      version: updateTo.version,
+      prerelease: updateTo.prerelease === true,
+      notes: typeof updateTo.notes === "string" ? updateTo.notes : "",
+      releaseUrl: typeof updateTo.releaseUrl === "string" ? updateTo.releaseUrl : undefined,
+      builds: [{
+        arch: process.arch,
+        url: updateTo.url,
+        size: typeof updateTo.size === "number" ? updateTo.size : undefined,
+      }],
+    });
+  }
+  return releases;
+}
+
+async function fetchReleases(): Promise<AppcastRelease[]> {
+  if (process.platform === "darwin") {
+    return fetchMacReleases();
+  }
+  const feed = (await fetchFeed(APPCAST_URL)) as { releases?: unknown };
   if (!Array.isArray(feed.releases)) {
     throw new Error("update feed has no releases");
   }
@@ -225,7 +280,10 @@ async function fetchReleases(): Promise<AppcastRelease[]> {
   );
 }
 
-function findWindowsAsset(builds: AppcastBuild[]): AppcastBuild | null {
+function findAsset(builds: AppcastBuild[]): AppcastBuild | null {
+  if (process.platform === "darwin") {
+    return builds.find((build) => build.arch === process.arch && build.url !== "") ?? null;
+  }
   if (updateArchitectureTokens === undefined) {
     throw new Error(`unsupported Windows architecture: ${process.arch}`);
   }
@@ -257,7 +315,7 @@ async function checkForUpdate(): Promise<AppUpdateInfo | null> {
     }
     let best: AppUpdateInfo | null = null;
     for (const release of releases) {
-      const asset = findWindowsAsset(release.builds);
+      const asset = findAsset(release.builds);
       if (asset === null) {
         continue;
       }
@@ -417,8 +475,64 @@ function prepareInstallation(): AppUpdateInfo {
   return info;
 }
 
+/**
+ * VPN4TV: the Mac path. Squirrel.Mac reads the same feed, downloads the ZIP
+ * and checks its signature (only an app signed like this one passes), then
+ * quitAndInstall swaps the bundle and starts the new version. It reports no
+ * progress: the bar stays indeterminate.
+ */
+function installMac(): Promise<UpdateInstallResult> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      autoUpdater.removeListener("error", onError);
+      autoUpdater.removeListener("update-not-available", onNotAvailable);
+      autoUpdater.removeListener("update-downloaded", onDownloaded);
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onNotAvailable = () => {
+      cleanup();
+      reject(new Error("the update feed offers no newer version"));
+    };
+    const onDownloaded = () => {
+      cleanup();
+      runtime.downloading = false;
+      runtime.installing = true;
+      broadcastState();
+      resolve("started");
+      setImmediate(() => autoUpdater.quitAndInstall());
+    };
+    autoUpdater.on("error", onError);
+    autoUpdater.on("update-not-available", onNotAvailable);
+    autoUpdater.on("update-downloaded", onDownloaded);
+    if (process.env.VPN4TV_UPDATE_AUTOINSTALL === "1") {
+      for (const event of ["checking-for-update", "update-available", "update-not-available", "update-downloaded", "before-quit-for-update"] as const) {
+        autoUpdater.on(event as "update-available", () => console.log(`[updates] test: event ${event}`));
+      }
+      autoUpdater.on("error", (error) => console.log(`[updates] test: event error ${error.message}`));
+    }
+    try {
+      autoUpdater.setFeedURL({ url: macFeedURL(), serverType: "json" });
+      autoUpdater.checkForUpdates();
+    } catch (error) {
+      cleanup();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
 async function downloadAndInstall(): Promise<UpdateInstallResult> {
   const info = prepareInstallation();
+  if (process.platform === "darwin") {
+    try {
+      return await installMac();
+    } catch (error) {
+      resetInstallationState();
+      throw error;
+    }
+  }
   try {
     const installerPath = await downloadUpdate(info);
     if (desktopService === null) {
@@ -448,6 +562,10 @@ async function downloadAndInstall(): Promise<UpdateInstallResult> {
 }
 
 async function installWithElevation(): Promise<boolean> {
+  // VPN4TV: Windows only; the Mac path never offers it (no signer bypass).
+  if (process.platform !== "win32") {
+    throw new Error("installing with elevation is not supported on this platform");
+  }
   const info = prepareInstallation();
   try {
     const installerPath = await downloadUpdate(info);
@@ -547,6 +665,20 @@ export function registerUpdates(): void {
 
 export async function runStartupUpdateCheck(present: () => void): Promise<void> {
   if (!UPDATES_SUPPORTED) {
+    return;
+  }
+  // VPN4TV: the update test: check the feed (VPN4TV_UPDATE_FEED) and
+  // install whatever it offers, without the settings or a window.
+  if (process.env.VPN4TV_UPDATE_AUTOINSTALL === "1") {
+    try {
+      const offered = await checkForUpdate();
+      console.log(`[updates] test: offered ${offered?.versionName ?? "nothing"}`);
+      if (offered !== null) {
+        console.log(`[updates] test: ${await downloadAndInstall()}`);
+      }
+    } catch (error) {
+      console.error("[updates] test failed:", error);
+    }
     return;
   }
   const shouldPresentCached = loadCachedUpdate();

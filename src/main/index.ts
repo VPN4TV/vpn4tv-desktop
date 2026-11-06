@@ -81,7 +81,12 @@ function handleFatal(kind: string, error: unknown): never {
 process.on("uncaughtException", (error) => handleFatal("uncaughtException", error));
 process.on("unhandledRejection", (reason) => handleFatal("unhandledRejection", reason));
 
-configureApplicationPaths(developmentSwitchValue("user-data"));
+// VPN4TV: the update test runs next to an installed copy: its own data, so the
+// single-instance lock does not hand it over to that copy.
+configureApplicationPaths(
+  developmentSwitchValue("user-data") ||
+    (process.env.VPN4TV_UPDATE_AUTOINSTALL === "1" ? join(app.getPath("appData"), "VPN4TV-update-test") : ""),
+);
 
 crashReporter.start({ submitURL: "", uploadToServer: false, compress: false });
 
