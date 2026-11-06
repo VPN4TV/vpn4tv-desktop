@@ -205,34 +205,103 @@ export interface SubscriptionUserInfo {
 }
 
 /**
+ * api.vpn4tv.com before its bell mirror: two tries of 5 s each, a hard limit
+ * for the whole request, as Android 5.4.4 (54402). Where api is blocked (the
+ * SYN or the TLS handshake dropped) the full wait kept the client on it while
+ * the mirror answers at once on the same networks; the mirror and the anchor
+ * keep the full wait.
+ */
+export const QUICK_ATTEMPTS = 2;
+export const QUICK_TIMEOUT_MS = 5_000;
+
+class RequestTimeout extends Error {}
+
+/** fetch with a limit on the whole request, the body included. */
+async function timedFetch(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+): Promise<{ response: Response; body: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { headers, signal: controller.signal });
+    return { response, body: await response.text() };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new RequestTimeout(`no answer from ${url} in ${timeoutMs} ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function subscriptionFrom({ response, body }: { response: Response; body: string }): SubscriptionFetch {
+  return {
+    content: body,
+    title: decodeProfileTitle(response.headers.get("profile-title")),
+    updateIntervalHours: parseOptionalInt(response.headers.get("profile-update-interval")),
+    userInfo: parseUserInfo(response.headers.get("subscription-userinfo")),
+  };
+}
+
+/**
  * Fetch a subscription and the metadata headers the backend sets
- * (subscription-userinfo / profile-title / profile-update-interval).
+ * (subscription-userinfo / profile-title / profile-update-interval): the
+ * address itself (for api.vpn4tv.com [QUICK_ATTEMPTS] quick tries, again only
+ * after a timeout), then the bell mirror, then the infra anchor.
  */
 export async function fetchSubscription(
   url: string,
   identity: DeviceIdentity,
   timeoutMs = 30_000,
+  quickTimeoutMs = QUICK_TIMEOUT_MS,
 ): Promise<SubscriptionFetch> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { headers: deviceHeaders(identity), signal: controller.signal });
-    return {
-      content: await response.text(),
-      title: decodeProfileTitle(response.headers.get("profile-title")),
-      updateIntervalHours: parseOptionalInt(response.headers.get("profile-update-interval")),
-      userInfo: parseUserInfo(response.headers.get("subscription-userinfo")),
-    };
-  } catch (error) {
-    // DNS/TLS blocked → anchor, at the cost of the metadata headers.
-    const body = await resilientGet(url, deviceHeaders(identity), timeoutMs);
-    if (body === null) {
-      throw error;
+  const headers = deviceHeaders(identity);
+  const mirror = mirrorUrl(url);
+  const mirrored = mirror !== url;
+  let lastError: unknown = new Error(`no answer from ${url}`);
+  for (let attempt = 1; attempt <= QUICK_ATTEMPTS; attempt += 1) {
+    try {
+      const fetched = await timedFetch(url, headers, mirrored ? quickTimeoutMs : timeoutMs);
+      if (!mirrored || fetched.response.status < 500) {
+        return subscriptionFrom(fetched);
+      }
+      lastError = new Error(`HTTP ${fetched.response.status} from ${url}`);
+      break;
+    } catch (error) {
+      lastError = error;
+      if (mirrored && !(error instanceof RequestTimeout)) {
+        break;
+      }
+      if (attempt < QUICK_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      }
     }
-    return { content: body };
-  } finally {
-    clearTimeout(timer);
   }
+  if (mirrored) {
+    try {
+      return subscriptionFrom(await timedFetch(mirror, headers, timeoutMs));
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  // DNS/TLS blocked → anchor, at the cost of the metadata headers.
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    // not a URL: nothing more to try
+  }
+  if (INFRA_HOSTS.has(host)) {
+    try {
+      return { content: await anchoredGet(mirror, headers, timeoutMs) };
+    } catch {
+      // keep the error of the requests above
+    }
+  }
+  throw lastError;
 }
 
 /** "upload=N; download=N; total=N; expire=epoch" → fields. */

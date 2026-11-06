@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   decodeProfileTitle,
   deviceHeaders,
+  fetchSubscription,
   formatPairingCode,
   isExpired,
   mirrorUrl,
@@ -65,4 +66,35 @@ test("profile-title decodes plain and base64 forms", () => {
   const encoded = Buffer.from("Подписка", "utf8").toString("base64");
   assert.equal(decodeProfileTitle(`base64:${encoded}`), "Подписка");
   assert.equal(decodeProfileTitle(null), undefined);
+});
+
+test("a silent api gets two quick tries, then the bell mirror answers with its headers", async () => {
+  const realFetch = globalThis.fetch;
+  const asked: string[] = [];
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    asked.push(url);
+    if (url.startsWith("https://api.vpn4tv.com/")) {
+      // a dropped TLS handshake: no answer until the caller gives up
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+    }
+    return Promise.resolve(new Response("vless://x", { headers: { "profile-title": "Mirror" } }));
+  }) as typeof fetch;
+  try {
+    const identity = { hwid: "h", version: "1.0.0" };
+    const started = Date.now();
+    const result = await fetchSubscription("https://api.vpn4tv.com/configs/1/x", identity, 30_000, 50);
+    assert.deepEqual(asked, [
+      "https://api.vpn4tv.com/configs/1/x",
+      "https://api.vpn4tv.com/configs/1/x",
+      "https://bell.a4e.ar/configs/1/x",
+    ]);
+    assert.equal(result.content, "vless://x");
+    assert.equal(result.title, "Mirror");
+    assert.ok(Date.now() - started < 5_000, "the quick tries must not wait the full timeout");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
