@@ -900,6 +900,11 @@ async function reloadIfSelectedAndRunning(id: string): Promise<void> {
   if (selectedProfileId() !== id) {
     return;
   }
+  // A connect while this refresh ran may have read the old file: let it
+  // finish, then reload it as well (as on Android).
+  if (serviceStartRunning) {
+    await serviceStartChain;
+  }
   if (daemonState.status !== ServiceStatus_Type.STARTED) {
     return;
   }
