@@ -228,6 +228,12 @@ export async function readCrashReport(name: string): Promise<CrashReportFile[]> 
   return read(name);
 }
 
+/** VPN4TV: a binary file of a report; only the app's own reports have one (a native dump). */
+export function readCrashReportMinidump(name: string, fileName: string): Buffer | null {
+  const route = routeReport(name);
+  return route.fromApp ? appReports.readMinidump(route.bareName, fileName) : null;
+}
+
 export function registerReports() {
   ipcMain.handle(
     REPORTS_CALL,

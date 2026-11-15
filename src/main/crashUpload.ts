@@ -9,6 +9,7 @@ import { app } from "electron";
 
 import { Preference, parseBooleanPreference } from "./database";
 import * as reports from "./reports";
+import { minidumpUploadSection } from "./vpn4tv/crashDumps";
 import { withoutRuleSetData } from "./vpn4tv/russiaDirect";
 
 const RECEIVER_URL = "https://bell.a4e.ar/crash";
@@ -39,7 +40,10 @@ export function crashReportUploadEnabled(): boolean {
 }
 
 async function upload(name: string, content: string): Promise<void> {
-  const body = content.length > MAXIMUM_BODY_BYTES ? content.slice(0, MAXIMUM_BODY_BYTES) : content;
+  // VPN4TV: the limit is in bytes (the receiver's is 2 MB); non-Latin text takes 2–3 per character.
+  const encoded = Buffer.from(content, "utf-8");
+  const body =
+    encoded.length > MAXIMUM_BODY_BYTES ? encoded.subarray(0, MAXIMUM_BODY_BYTES).toString("utf-8") : content;
   const response = await fetch(RECEIVER_URL, {
     method: "POST",
     headers: {
@@ -58,11 +62,23 @@ async function upload(name: string, content: string): Promise<void> {
   }
 }
 
+let uploading: Promise<void> | null = null;
+
 /**
  * Upload crash reports we have not sent yet. Runs once per launch, after the
  * daemon connection settles — the daemon owns the core's reports.
  */
-export async function uploadPendingCrashReports(): Promise<void> {
+export function uploadPendingCrashReports(): Promise<void> {
+  // VPN4TV: a crashed child process starts a run too (index.ts); never two at once.
+  if (uploading === null) {
+    uploading = uploadPending().finally(() => {
+      uploading = null;
+    });
+  }
+  return uploading;
+}
+
+async function uploadPending(): Promise<void> {
   if (!enabledPreference.get()) {
     return;
   }
@@ -80,7 +96,7 @@ export async function uploadPendingCrashReports(): Promise<void> {
   for (const entry of pending) {
     try {
       const files = await reports.readCrashReport(entry.name);
-      const content = files
+      let content = files
         .filter((file) => !file.isBinary && file.content !== "")
         .map((file) => {
           // The "Russia direct" rule sets ride inline in the config snapshot.
@@ -88,6 +104,15 @@ export async function uploadPendingCrashReports(): Promise<void> {
           return `===== ${file.name} =====\n${text}`;
         })
         .join("\n\n");
+      // A native dump goes whole or not at all: bell decodes it.
+      for (const file of files.filter((candidate) => candidate.isBinary)) {
+        const bytes = reports.readCrashReportMinidump(entry.name, file.name);
+        if (bytes === null) {
+          continue;
+        }
+        const budget = MAXIMUM_BODY_BYTES - Buffer.byteLength(content) - 2;
+        content += `${content === "" ? "" : "\n\n"}${minidumpUploadSection(file.name, bytes, budget)}`;
+      }
       if (content !== "") {
         await upload(entry.name, content);
       }

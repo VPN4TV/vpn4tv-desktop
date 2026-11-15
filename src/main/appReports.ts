@@ -14,6 +14,8 @@ import { join } from "node:path";
 
 import type { CrashReportEntry, CrashReportExportOptions, CrashReportFile } from "../shared/ipc";
 import { createApplicationCacheTemporaryDirectory } from "./appCache";
+import { processGoneLog } from "./processGone";
+import { describeNativeCrash } from "./vpn4tv/crashDumps";
 import { applicationService } from "./worker";
 
 // Matches the daemon and mobile clients' timestamped directory layout.
@@ -58,6 +60,9 @@ function existsSync(path: string): boolean {
 interface RuntimeCrashMetadata {
   exceptionName: string;
   exceptionReason: string;
+  /** VPN4TV: native dumps only — which Electron process, and which Electron (for its symbols). */
+  processType?: string;
+  electronVersion?: string;
 }
 
 export interface RuntimeCrashCaptureResult {
@@ -121,7 +126,7 @@ export function captureRuntimeCrash(kind: string, error: unknown): RuntimeCrashC
 }
 
 function writeMetadataSync(reportPath: string, date: Date, extra: RuntimeCrashMetadata): void {
-  const metadata: Record<string, string> = {
+  const metadata: Record<string, string | undefined> = {
     source: reportSource,
     processName: app.getName(),
     processPath: process.execPath,
@@ -139,14 +144,22 @@ export function archiveNativeCrashDumps(): void {
   } catch {
     return;
   }
+  if (dumps.length === 0) {
+    return;
+  }
+  const gone = processGoneLog();
   for (const dumpPath of dumps) {
     try {
       const info = statSync(dumpPath);
       const reportPath = uniqueReportPath(reportsDirectory(), info.mtime);
       mkdirSync(reportPath, { recursive: true });
+      // VPN4TV: name the process (the log of child processes that went away).
+      const described = describeNativeCrash(gone, info.mtimeMs);
       writeMetadataSync(reportPath, info.mtime, {
         exceptionName: "NativeCrash",
-        exceptionReason: "The application process crashed.",
+        exceptionReason: described.exceptionReason,
+        processType: described.processType,
+        electronVersion: process.versions.electron,
       });
       copyFileSync(dumpPath, join(reportPath, `native${minidumpExtension}`));
       rmSync(dumpPath, { force: true });
@@ -244,6 +257,14 @@ export function read(name: string): CrashReportFile[] {
     }
   }
   return files;
+}
+
+/** VPN4TV: a report's native dump, for the crash upload. */
+export function readMinidump(name: string, fileName: string): Buffer {
+  if (!fileName.endsWith(minidumpExtension) || fileName.includes("/") || fileName.includes("\\")) {
+    throw new Error("invalid dump name");
+  }
+  return readFileSync(join(reportPath(name), fileName));
 }
 
 export function markRead(name: string): void {

@@ -52,7 +52,9 @@ cat > "$OUT/tsconfig.json" <<EOF
     "$PWD/src/main/vpn4tv/russiaDirectRuntime.test.ts",
     "$PWD/src/main/vpn4tv/converter.test.ts",
     "$PWD/src/main/vpn4tv/onboarding.test.ts",
-    "$PWD/src/main/vpn4tv/integration.test.ts"
+    "$PWD/src/main/vpn4tv/integration.test.ts",
+    "$PWD/src/main/vpn4tv/crashDumps.ts",
+    "$PWD/src/main/vpn4tv/crashDumps.test.ts"
   ]
 }
 EOF

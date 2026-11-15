@@ -25,7 +25,8 @@ import { hasLoginItemArgument, migrateLoginItem, wasOpenedAtLogin } from "./logi
 import { registerPreferences } from "./preferences";
 import { registerOpenConnectBrowser } from "./openConnectBrowser";
 import { registerProfileEditorWindows } from "./profileEditorWindows";
-import { scheduleCrashReportUpload } from "./crashUpload";
+import { scheduleCrashReportUpload, uploadPendingCrashReports } from "./crashUpload";
+import { recordProcessGone, watchProcessGone } from "./processGone";
 import { importPastedContent, registerProfiles, startSelectedProfile } from "./profiles";
 import { registerOnboarding } from "./vpn4tv/onboardingService";
 import { autoConnectEnabled } from "./vpn4tv";
@@ -89,6 +90,22 @@ configureApplicationPaths(
 );
 
 crashReporter.start({ submitURL: "", uploadToServer: false, compress: false });
+
+// VPN4TV: name the process behind each native dump, and send a crashed child
+// process's dump without waiting for the next launch (the app may run for weeks).
+let crashArchiveTimer: NodeJS.Timeout | null = null;
+watchProcessGone(() => {
+  if (crashArchiveTimer !== null) {
+    return;
+  }
+  // The crash reporter finishes the dump before the process is reported gone;
+  // the wait is a margin, and gathers a crash that takes others along.
+  crashArchiveTimer = setTimeout(() => {
+    crashArchiveTimer = null;
+    archiveNativeCrashDumps();
+    void uploadPendingCrashReports();
+  }, 15_000);
+});
 
 const testScriptPath = developmentSwitchValue("test-script");
 
@@ -156,6 +173,8 @@ function createWindow(): BrowserWindow {
   });
   window.webContents.on("render-process-gone", (_event, details) => {
     if (!quitting && details.reason !== "clean-exit") {
+      // VPN4TV: before the exit below, so the dump found at the next launch is named.
+      recordProcessGone("renderer", details);
       handleFatal(
         "render-process-gone",
         new Error(`renderer ${details.reason} (exit code ${details.exitCode})`),
