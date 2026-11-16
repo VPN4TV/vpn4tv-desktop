@@ -3,12 +3,14 @@ import { test } from "node:test";
 
 import {
   type ResolvedHostsStore,
+  chooseDoh,
   dohCapableIp,
   dohProbeCandidates,
   dohServer,
   hasFakeDns,
   injectProbedDns,
   injectResolvedHosts,
+  isDnsAnswer,
   preResolveHosts,
   resolutionEndpoints,
   serverHosts,
@@ -30,22 +32,55 @@ test("dohServer strips the scheme and path", () => {
   );
 });
 
-test("direct DNS needs an IP with a matching certificate", () => {
-  // An IP-hosted winner is used as-is.
+test("direct DNS takes only a DoH IP that answered the probe", () => {
   assert.equal(
-    dohCapableIp({ dohUrl: "https://1.0.0.1/dns-query", udpServer: "1.1.1.1", dohWorks: true }),
+    dohCapableIp({ dohUrl: "https://1.0.0.1/dns-query", udpServer: "1.1.1.1", dohWorks: true, dohIp: "1.0.0.1" }),
     "1.0.0.1",
   );
-  // A hostname-only winner falls back to a known IP-cert provider.
+  // A winner by name with no IP answering: no guess (it used to be 9.9.9.9, dead where Quad9 is blocked).
   assert.equal(
-    dohCapableIp({ dohUrl: "https://dns.adguard-dns.com/dns-query", udpServer: "9.9.9.9", dohWorks: true }),
-    "9.9.9.9",
-  );
-  // Nothing answered → no DoH for the direct server at all.
-  assert.equal(
-    dohCapableIp({ dohUrl: "https://8.8.8.8/dns-query", udpServer: "9.9.9.9", dohWorks: false }),
+    dohCapableIp({ dohUrl: "https://dns.adguard-dns.com/dns-query", udpServer: "8.8.8.8", dohWorks: true, dohIp: null }),
     null,
   );
+  assert.equal(
+    dohCapableIp({ dohUrl: "https://8.8.8.8/dns-query", udpServer: "9.9.9.9", dohWorks: false, dohIp: null }),
+    null,
+  );
+});
+
+test("the DoH choice: Quad9 answering wins both roles at once", async () => {
+  const asked: string[] = [];
+  const choice = await chooseDoh(dohProbeCandidates, async (url) => (asked.push(url), true));
+  assert.deepEqual(choice, { winner: "https://9.9.9.9/dns-query", ip: "9.9.9.9" });
+  assert.deepEqual(asked, ["https://9.9.9.9/dns-query"]);
+});
+
+test("the DoH choice: Quad9 blocked, AdGuard by name wins, dns-direct gets an IP that answered", async () => {
+  const alive = new Set(["https://dns.adguard-dns.com/dns-query", "https://8.8.8.8/dns-query"]);
+  const asked: string[] = [];
+  const choice = await chooseDoh(dohProbeCandidates, async (url) => (asked.push(url), alive.has(url)));
+  assert.deepEqual(choice, { winner: "https://dns.adguard-dns.com/dns-query", ip: "8.8.8.8" });
+  assert.ok(!asked.includes("https://dns.google/dns-query"), "after a winner by name only IP candidates are asked");
+});
+
+test("the DoH choice: no IP answering leaves dns-direct to UDP, nothing answering gives neither", async () => {
+  assert.deepEqual(
+    await chooseDoh(dohProbeCandidates, async (url) => url === "https://dns.adguard-dns.com/dns-query"),
+    { winner: "https://dns.adguard-dns.com/dns-query", ip: null },
+  );
+  assert.deepEqual(await chooseDoh(dohProbeCandidates, async () => false), { winner: null, ip: null });
+});
+
+test("a UDP answer must match the id, carry the response bit and no format or server error", () => {
+  const query = Buffer.from([0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]);
+  const reply = (id0: number, flags: number, rcode: number) =>
+    Buffer.from([id0, 0x34, flags, rcode, 0, 1, 0, 1, 0, 0, 0, 0]);
+  assert.ok(isDnsAnswer(query, reply(0x12, 0x81, 0x80)));
+  assert.ok(isDnsAnswer(query, reply(0x12, 0x81, 0x83)), "NXDOMAIN is still an answer");
+  assert.ok(!isDnsAnswer(query, reply(0x99, 0x81, 0x80)), "someone else's id");
+  assert.ok(!isDnsAnswer(query, reply(0x12, 0x01, 0x80)), "not a response");
+  assert.ok(!isDnsAnswer(query, reply(0x12, 0x81, 0x82)), "SERVFAIL");
+  assert.ok(!isDnsAnswer(query, reply(0x12, 0x81, 0x80).subarray(0, 8)), "truncated");
 });
 
 const profile = JSON.stringify({
@@ -65,6 +100,7 @@ test("a working DoH endpoint rewrites both servers and leaves the rest alone", (
     dohUrl: "https://149.112.112.112/dns-query",
     udpServer: "9.9.9.9",
     dohWorks: true,
+    dohIp: "149.112.112.112",
   });
   const dns = JSON.parse(result).dns;
   assert.deepEqual(dns.servers[0], {
@@ -76,6 +112,19 @@ test("a working DoH endpoint rewrites both servers and leaves the rest alone", (
   assert.deepEqual(dns.servers[1], { type: "https", tag: "dns-direct", server: "149.112.112.112" });
   assert.deepEqual(dns.servers[2], { type: "fakeip", tag: "dns-fakeip", inet4_range: "198.18.0.0/15" });
   assert.deepEqual(dns.rules, [{ query_type: ["A"], server: "dns-fakeip" }]);
+});
+
+test("a winner by name with no IP answering: the tunnel keeps it, dns-direct takes the UDP server that answered", () => {
+  const servers = JSON.parse(
+    injectProbedDns(profile, {
+      dohUrl: "https://dns.adguard-dns.com/dns-query",
+      udpServer: "8.8.8.8",
+      dohWorks: true,
+      dohIp: null,
+    }),
+  ).dns.servers;
+  assert.equal(servers[0].server, "dns.adguard-dns.com");
+  assert.deepEqual(servers[1], { type: "udp", tag: "dns-direct", server: "8.8.8.8" });
 });
 
 test("with no reachable DoH the direct server falls back to plain UDP", () => {

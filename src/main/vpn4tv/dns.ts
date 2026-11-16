@@ -6,6 +6,8 @@
 // endpoints before connecting and rewrites the profile's DNS servers to
 // whichever one actually answers. Ordering below is preference.
 
+import { createSocket } from "node:dgram";
+
 import { buildDnsQuery, parseDnsAnswers } from "./russiaDirectProbe";
 import { type Json, asObject, parseJsonObject, str } from "./support";
 
@@ -55,6 +57,7 @@ const PROVIDERS: Provider[] = [
 ];
 
 const PROBE_TIMEOUT_MILLISECONDS = 3_000;
+const UDP_PROBE_TIMEOUT_MILLISECONDS = 2_000;
 
 /** The host of a DoH URL when it is a bare IPv4 address, else null. */
 function ipHost(url: string): string | null {
@@ -72,29 +75,114 @@ const dohCapableIps = new Set(
   ]),
 );
 
-const preferredDohIp =
-  PROVIDERS.find((provider) => provider.ipCertSan === true)
-    ?.dohUrls.map(ipHost)
-    .find((host): host is string => host !== null) ?? "9.9.9.9";
-
 export interface DnsProbeResult {
   dohUrl: string;
   udpServer: string;
   dohWorks: boolean;
+  /** An IP whose DoH answered this probe, for dns-direct (see [dohCapableIp]); null or absent: none did. */
+  dohIp?: string | null;
 }
 
-/** Probe the known DoH endpoints; the first that answers wins. */
-export async function probeDns(): Promise<DnsProbeResult> {
-  for (const url of dohProbeCandidates) {
-    if (await probeEndpoint(url)) {
-      return { dohUrl: url, udpServer: udpCandidates[0] ?? "9.9.9.9", dohWorks: true };
+export interface DohChoice {
+  winner: string | null;
+  ip: string | null;
+}
+
+/**
+ * Walk [candidates] in order, asking [answers] about each. The first that answers wins (dns-remote).
+ * dns-direct needs an IP whose certificate covers it; after a winner by name only such IPs are still
+ * asked, and only one that answered itself is taken. Before 2026-11 the IP was guessed instead: the
+ * registry's first, i.e. 9.9.9.9 right after its own DoH had failed, and dns-direct stayed dead where a
+ * provider blocks 9.9.9.9:443 (Android support chat 2026-11-16: «network is unreachable», nothing opened).
+ */
+export async function chooseDoh(
+  candidates: string[],
+  answers: (url: string) => Promise<boolean>,
+): Promise<DohChoice> {
+  let winner: string | null = null;
+  for (const url of candidates) {
+    const host = ipHost(url);
+    const ip = host !== null && dohCapableIps.has(host) ? host : null;
+    if (winner !== null && ip === null) {
+      continue;
+    }
+    if (!(await answers(url))) {
+      continue;
+    }
+    winner ??= url;
+    if (ip !== null) {
+      return { winner, ip };
     }
   }
+  return { winner, ip: null };
+}
+
+/**
+ * Probe the known DoH endpoints (the first that answers wins, plus an IP one for dns-direct) and the
+ * plain UDP servers (the first that answers a real query). Until 2026-11 the UDP server was simply the
+ * first in the list, unasked.
+ */
+export async function probeDns(): Promise<DnsProbeResult> {
+  const [doh, udp] = await Promise.all([chooseDoh(dohProbeCandidates, probeEndpoint), firstUdpAnswering()]);
   return {
-    dohUrl: "https://8.8.8.8/dns-query",
-    udpServer: udpCandidates[0] ?? "9.9.9.9",
-    dohWorks: false,
+    dohUrl: doh.winner ?? "https://8.8.8.8/dns-query",
+    udpServer: udp ?? udpCandidates[0] ?? "8.8.8.8",
+    dohWorks: doh.winner !== null,
+    dohIp: doh.ip,
   };
+}
+
+async function firstUdpAnswering(): Promise<string | null> {
+  for (const server of udpCandidates) {
+    if (await probeUdp(server)) {
+      return server;
+    }
+  }
+  return null;
+}
+
+/** [reply] answers [query]: same id, the response bit, no format or server error. */
+export function isDnsAnswer(query: Buffer, reply: Buffer): boolean {
+  return (
+    reply.length >= 12 &&
+    reply.readUInt16BE(0) === query.readUInt16BE(0) &&
+    (reply[2] & 0x80) !== 0 &&
+    ![1, 2].includes(reply[3] & 0x0f)
+  );
+}
+
+/** Ask [server] on UDP 53 for example.com's A record and wait for its answer. */
+async function probeUdp(server: string): Promise<boolean> {
+  const query = buildDnsQuery("example.com");
+  return await new Promise<boolean>((resolve) => {
+    const socket = createSocket("udp4");
+    let settled = false;
+    const finish = (answered: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      try {
+        socket.close();
+      } catch {
+        // already closed after an error
+      }
+      resolve(answered);
+    };
+    const timer = setTimeout(() => finish(false), UDP_PROBE_TIMEOUT_MILLISECONDS);
+    socket.on("error", () => finish(false));
+    socket.on("message", (message) => {
+      if (isDnsAnswer(query, message)) {
+        finish(true);
+      }
+    });
+    socket.send(query, 53, server, (error) => {
+      if (error) {
+        finish(false);
+      }
+    });
+  });
 }
 
 async function probeEndpoint(dohUrl: string): Promise<boolean> {
@@ -105,9 +193,11 @@ async function probeEndpoint(dohUrl: string): Promise<boolean> {
       headers: { Accept: "application/dns-json" },
       signal: controller.signal,
     });
-    // Anything 2xx–4xx means reachable and not intercepted; a 400 just means the
-    // endpoint wanted the wireformat path instead of the JSON one.
-    return response.status >= 200 && response.status < 500;
+    // Any status is the real server answering over a verified TLS connection: a 400
+    // means it wanted the wireformat path instead of the JSON one, and Quad9 answers
+    // 505 (HTTP Version Not Supported) to this HTTP/1.1 request, serving DoH over
+    // HTTP/2 only (2026-11), while the core asks it over HTTP/2 and gets answers.
+    return response.status >= 100 && response.status < 600;
   } catch {
     return false;
   } finally {
@@ -121,22 +211,13 @@ export function dohServer(result: DnsProbeResult): string {
 }
 
 /**
- * An IP that serves DoH with a certificate valid for the IP itself — dns-direct
- * has no bootstrap resolver, so it must be addressed by IP. Null when no DoH
- * endpoint answered at all.
+ * An IP that serves DoH with a certificate valid for the IP itself and that
+ * answered the probe ([chooseDoh]) — dns-direct has no bootstrap resolver, so it
+ * must be addressed by IP. Null when none answered: dns-direct then takes the
+ * UDP server that answered.
  */
 export function dohCapableIp(result: DnsProbeResult): string | null {
-  if (!result.dohWorks) {
-    return null;
-  }
-  const host = dohServer(result);
-  if (/^[0-9.]+$/.test(host)) {
-    return host;
-  }
-  if (dohCapableIps.has(result.udpServer)) {
-    return result.udpServer;
-  }
-  return preferredDohIp;
+  return result.dohWorks ? (result.dohIp ?? null) : null;
 }
 
 /**
