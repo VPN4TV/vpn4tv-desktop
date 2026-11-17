@@ -30,6 +30,15 @@ test("vless reality URI becomes a native sing-box outbound", () => {
   assert.equal(proxy.xrayOutbound, undefined, "reality/tcp must not need the xray bridge");
 });
 
+test("Xray's udp443 Vision is plain Vision for the core, the xray bridge keeps it", () => {
+  // Support chat 2026-11-17: another service's key failed with «unsupported flow: xtls-rprx-vision-udp443».
+  const uri =
+    "vless://11111111-2222-3333-4444-555555555555@example.com:443" +
+    "?security=reality&sni=www.apple.com&fp=chrome&pbk=PUBKEY&sid=ab12&flow=xtls-rprx-vision-udp443&type=tcp#Z";
+  const [proxy] = parseSubscription(uri);
+  assert.equal(proxy.outbound.flow, "xtls-rprx-vision");
+});
+
 test("vless xhttp goes through the xray bridge", () => {
   const uri =
     "vless://11111111-2222-3333-4444-555555555555@example.com:8443" +

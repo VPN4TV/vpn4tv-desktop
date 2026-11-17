@@ -65,6 +65,18 @@ export let lastDns: SubscriptionDns = {
   directDns: DIRECT_DNS_FALLBACK,
 };
 
+
+/**
+ * The flow for the core's VLESS, which takes "" and "xtls-rprx-vision" only. "xtls-rprx-vision-udp443" is Xray's
+ * client-side form of the same Vision: Xray sends the server plain "xtls-rprx-vision" and only stops rejecting UDP to
+ * port 443 (QUIC) inside the tunnel, which the core never rejects. Other services' keys carry it (support chat
+ * 2026-11-17: «unsupported flow: xtls-rprx-vision-udp443»). The xray bridge keeps the original. As Android
+ * ProxyParser.coreFlow.
+ */
+export function coreFlow(flow: string): string {
+  return flow === "xtls-rprx-vision-udp443" ? "xtls-rprx-vision" : flow;
+}
+
 export function resetLastDns(): void {
   lastDns = { remoteDns: "https://8.8.8.8/dns-query", directDns: DIRECT_DNS_FALLBACK };
 }
@@ -306,7 +318,7 @@ function parseVless(uri: string): ProxyConfig | null {
     packet_encoding: "xudp",
   };
   if (flow.length > 0) {
-    outbound.flow = flow;
+    outbound.flow = coreFlow(flow);
   }
   if (security === "tls" || security === "reality") {
     const tls: Json = { enabled: true, server_name: sni };
@@ -863,7 +875,7 @@ function parseXrayConfig(config: Json): ProxyConfig[] {
         if (protocol === "vless") {
           const flow = str(user, "flow");
           if (flow.length > 0) {
-            singbox.flow = flow;
+            singbox.flow = coreFlow(flow);
           }
           singbox.packet_encoding = "xudp";
         } else {
