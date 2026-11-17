@@ -82,10 +82,16 @@ function groupsSubmenu(): MenuItemConstructorOptions[] {
           label: item.urlTestDelay > 0 ? `${item.tag} (${item.urlTestDelay}ms)` : item.tag,
           type: "radio" as const,
           checked: item.tag === group.selected,
-          click: () =>
+          // A real switch also closes the open connections: the core leaves them on the server they were
+          // opened through (as dashboard api switchServer and Android ServersScreen.selectServer).
+          click: () => {
+            if (item.tag === group.selected) return;
             ignoreErrors(
-              startedService?.selectOutbound({ groupTag: group.tag, outboundTag: item.tag }),
-            ),
+              startedService
+                ?.selectOutbound({ groupTag: group.tag, outboundTag: item.tag })
+                .then(() => startedService?.closeAllConnections({})),
+            );
+          },
         })),
       ],
     });
