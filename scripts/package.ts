@@ -263,7 +263,8 @@ function stageWindowsCronetLibrary(
  * is fetched once (pinned checksum) and staged into bin/ for electron-builder.
  * The daemon looks for it beside itself.
  *
- * Our build (v1.1.5 of VPN4TV/trusttunnel-client, branch vpn4tv-desktop) reads
+ * Our build (v1.1.5 of VPN4TV/trusttunnel-client, branch vpn4tv-desktop; vpn4tv.2 carries
+ * upstream's fix of a crash in the QUIC ping, TRUST-710) reads
  * system_dns_servers, which the core sets to a dead end: the client's own
  * system DNS proxy listens on loopback with no credentials. The official
  * binary skips that key; to go back to it, point an entry at
@@ -275,20 +276,20 @@ const OUR_TRUSTTUNNEL = "https://bell.a4e.ar";
 const TRUSTTUNNEL_ARCHIVES: Record<string, { base: string; file: string; sha256: string; member: string }> = {
   "darwin/universal": {
     base: OUR_TRUSTTUNNEL,
-    file: "trusttunnel_client-v1.1.5-vpn4tv.1-macos-universal.tar.gz",
-    sha256: "9dff303d9c1a638ca42d4726724da8886a783beddff9c077c6344584187533f0",
-    member: "trusttunnel_client-v1.1.5-vpn4tv.1-macos-universal/trusttunnel_client",
+    file: "trusttunnel_client-v1.1.5-vpn4tv.2-macos-universal.tar.gz",
+    sha256: "dbed15764860d490d3b37c46c254bd353a887e8a73616e1db4c7ef1bc3e78e75",
+    member: "trusttunnel_client-v1.1.5-vpn4tv.2-macos-universal/trusttunnel_client",
   },
   "linux/amd64": {
     base: OUR_TRUSTTUNNEL,
-    file: "trusttunnel_client-v1.1.5-vpn4tv.1-linux-x86_64.tar.gz",
-    sha256: "d1c1b361c7ea9c02d55f804ce9ce1984d8dbac70af284a8d1407a4a1d0d6f61b",
-    member: "trusttunnel_client-v1.1.5-vpn4tv.1-linux-x86_64/trusttunnel_client",
+    file: "trusttunnel_client-v1.1.5-vpn4tv.2-linux-x86_64.tar.gz",
+    sha256: "b11776bb08b1522b201bda581948133a144c10c0992ce24757d32688fe957cb0",
+    member: "trusttunnel_client-v1.1.5-vpn4tv.2-linux-x86_64/trusttunnel_client",
   },
   "windows/amd64": {
     base: OUR_TRUSTTUNNEL,
-    file: "trusttunnel_client-v1.1.5-vpn4tv.1-windows-x86_64.zip",
-    sha256: "6ec156f91ab6e71ebb15a915bd6eaad7011ed6cfc53413d362d8e56baeeb52b0",
+    file: "trusttunnel_client-v1.1.5-vpn4tv.2-windows-x86_64.zip",
+    sha256: "b139dd278a0f637d49ab967eac6d2f2f3260872743a9c57afa38a8927f6560e7",
     member: "trusttunnel_client.exe",
   },
 };
