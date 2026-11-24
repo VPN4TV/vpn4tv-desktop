@@ -335,6 +335,18 @@ export const DESKTOP_TRANSLATIONS = {
     "fa": "ارتقا",
     "ru": "Обновить",
   },
+  "Couldn't get the Outline key: the site that gives it out can't be reached from your network or answered with an error. Ask the key's provider for a regular key that starts with ss://.": {
+    "zh-Hans": "无法获取 Outline 密钥：提供该密钥的网站在您的网络中无法访问，或返回了错误。请向密钥提供方索取以 ss:// 开头的普通密钥。",
+    "zh-Hant": "無法取得 Outline 金鑰：提供該金鑰的網站在您的網路中無法存取，或回傳了錯誤。請向金鑰提供者索取以 ss:// 開頭的一般金鑰。",
+    "fa": "کلید Outline دریافت نشد: سایتی که آن را می‌دهد از شبکهٔ شما در دسترس نیست یا با خطا پاسخ داد. از ارائه‌دهندهٔ کلید یک کلید معمولی بخواهید که با ss:// شروع شود.",
+    "ru": "Не удалось получить ключ Outline: сайт, который его выдаёт, недоступен из вашей сети или ответил ошибкой. Попросите у поставщика ключа обычный ключ, начинающийся с ss://.",
+  },
+  "Couldn't get the Outline key of the chosen server: the site that gives it out can't be reached from your network or answered with an error. Connect again: the app will choose the server itself (auto) and try to get the key through it.": {
+    "zh-Hans": "无法获取所选服务器的 Outline 密钥：提供该密钥的网站在您的网络中无法访问，或返回了错误。请再次连接，应用会自行选择服务器（auto），并尝试通过它获取密钥。",
+    "zh-Hant": "無法取得所選伺服器的 Outline 金鑰：提供該金鑰的網站在您的網路中無法存取，或回傳了錯誤。請再次連線，應用程式會自行選擇伺服器（auto），並嘗試透過它取得金鑰。",
+    "fa": "کلید Outline سرور انتخاب‌شده دریافت نشد: سایتی که آن را می‌دهد از شبکهٔ شما در دسترس نیست یا با خطا پاسخ داد. دوباره وصل شوید؛ برنامه خودش سرور را انتخاب می‌کند (auto) و تلاش می‌کند کلید را از طریق آن دریافت کند.",
+    "ru": "Не удалось получить ключ Outline выбранного сервера: сайт, который его выдаёт, недоступен из вашей сети или ответил ошибкой. Подключитесь ещё раз — приложение выберет сервер само (auto) и попробует получить ключ через него.",
+  },
 } satisfies Record<string, DesktopMessage>;
 
 export type DesktopMessageKey = keyof typeof DESKTOP_TRANSLATIONS;

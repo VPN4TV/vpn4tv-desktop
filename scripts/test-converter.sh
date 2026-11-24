@@ -54,7 +54,9 @@ cat > "$OUT/tsconfig.json" <<EOF
     "$PWD/src/main/vpn4tv/onboarding.test.ts",
     "$PWD/src/main/vpn4tv/integration.test.ts",
     "$PWD/src/main/vpn4tv/crashDumps.ts",
-    "$PWD/src/main/vpn4tv/crashDumps.test.ts"
+    "$PWD/src/main/vpn4tv/crashDumps.test.ts",
+    "$PWD/src/main/vpn4tv/outlineDynamic.ts",
+    "$PWD/src/main/vpn4tv/outlineDynamic.test.ts"
   ]
 }
 EOF

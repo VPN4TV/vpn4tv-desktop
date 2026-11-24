@@ -17,7 +17,16 @@ import {
   stripFakeDns,
 } from "./vpn4tv/dns";
 import { applyIPv6Support } from "./vpn4tv/ipv6";
-import { hasDynamicOutlineKeys, resolveDynamicOutlineKeys } from "./vpn4tv/outlineDynamic";
+import {
+  type OutlineKeyOutcome,
+  type OutlineKeyVerdict,
+  WAIT_WITHOUT_EARLIER_MS,
+  deadOutlineTags,
+  hasDynamicOutlineKeys,
+  outlineKeyLine,
+  outlineKeyVerdict,
+  resolveDynamicOutlineKeys,
+} from "./vpn4tv/outlineDynamic";
 import { usableRuleSets } from "./vpn4tv/russiaDirect";
 import { probeDnsRu, probeProxyAlive } from "./vpn4tv/russiaDirectProbe";
 import {
@@ -43,6 +52,7 @@ import {
 import { ServiceStatus_Type } from "../shared/gen/daemon/started_service_pb";
 import { ProfileContent_Type } from "../shared/gen/experimental/boxdd/desktop_service_pb";
 import { PROFILES_CALL, PROFILES_CHANGED } from "../shared/ipc";
+import { desktopLanguageFromLocale, translateDesktop } from "../shared/translations";
 import type {
   ProfileCreate,
   ProfileMetadata,
@@ -53,7 +63,8 @@ import type {
 } from "../shared/ipc";
 import { writeApplicationCacheFile } from "./appCache";
 import { clearServiceLogLines, writeServiceLogLine } from "./appLog";
-import { desktopService, startedService } from "./daemon";
+import { desktopService, managedService, startedService } from "./daemon";
+import { preferredLocale } from "./locale";
 import {
   Preference,
   preferenceSnapshot,
@@ -497,11 +508,108 @@ const resolvedHostsStore: ResolvedHostsStore = {
 /** A start of ours is talking to the daemon right now. */
 let serviceStartRunning = false;
 
+/** Bumped by every start: a fetch of Outline keys after a start belongs to that start only. */
+let outlineKeySession = 0;
+/** After a start that left keys unfetched: fetch them again (through the tunnel, as everything is) this long after it. */
+const OUTLINE_AGAIN_PAUSES_MS = [5_000, 15_000];
+
+function writeOutlineKeyLines(outcomes: readonly OutlineKeyOutcome[], again: boolean, startsRun: boolean): void {
+  outcomes.forEach((outcome, index) => {
+    const line = outlineKeyLine(outcome, again);
+    const warn = outcome.state !== "fetched";
+    (warn ? console.warn : console.info)(`vpn4tv: ${line}`);
+    writeServiceLogLine({ warn, message: line }, startsRun && index === 0);
+  });
+}
+
+/** What the user reads when a start stops for want of a key, with the hosts and why they did not answer. */
+function outlineKeyError(verdict: OutlineKeyVerdict, outcomes: readonly OutlineKeyOutcome[]): string {
+  const language = desktopLanguageFromLocale(preferredLocale());
+  const text = translateDesktop(
+    language,
+    verdict === "pick-another"
+      ? "Couldn't get the Outline key of the chosen server: the site that gives it out can't be reached from your network or answered with an error. Connect again: the app will choose the server itself (auto) and try to get the key through it."
+      : "Couldn't get the Outline key: the site that gives it out can't be reached from your network or answered with an error. Ask the key's provider for a regular key that starts with ss://.",
+  );
+  const details = outcomes
+    .filter((outcome) => outcome.state === "none")
+    .map((outcome) => `${outcome.host}: ${outcome.reason}`)
+    .join("; ");
+  return details === "" ? text : `${text}\n\n${details}`;
+}
+
+/** The server the "select" group has once the core is up, or null when its groups do not come within 3 s. */
+async function chosenServerAfterStart(): Promise<string | null> {
+  for (let waited = 0; waited <= 3_000; waited += 100) {
+    const group = daemonState.groups.find((candidate) => candidate.tag === "select");
+    if (group !== undefined) {
+      return group.selected;
+    }
+    await sleep(100);
+  }
+  return null;
+}
+
+/**
+ * The keys a start could not fetch, fetched again a few seconds after it. A
+ * key host blocked on the user's network is reachable through the tunnel,
+ * which carries this process's traffic like any other. A key that comes is
+ * written to the profile and the service restarts with it.
+ */
+function fetchOutlineKeysAgain(
+  session: number,
+  profileId: string | undefined,
+  content: string,
+  outcomes: readonly OutlineKeyOutcome[],
+): void {
+  let left = new Set(outcomes.filter((outcome) => outcome.state !== "fetched").map((outcome) => outcome.port));
+  if (left.size === 0 || profileId === undefined) {
+    return;
+  }
+  const wanted = () => session === outlineKeySession && daemonState.status === ServiceStatus_Type.STARTED;
+  void (async () => {
+    for (const pause of OUTLINE_AGAIN_PAUSES_MS) {
+      await sleep(pause);
+      if (!wanted()) {
+        return;
+      }
+      const resolution = await resolveDynamicOutlineKeys(content, {
+        onlyPorts: left,
+        waitWithEarlierMs: WAIT_WITHOUT_EARLIER_MS,
+      });
+      if (!wanted()) {
+        return;
+      }
+      writeOutlineKeyLines(resolution.outcomes, true, false);
+      left = new Set(
+        resolution.outcomes.filter((outcome) => outcome.state !== "fetched").map((outcome) => outcome.port),
+      );
+      if (resolution.content !== content) {
+        // The profile may have been updated meanwhile; that update reloads by itself.
+        const onDisk = await readFile(contentPath(profileId), "utf-8").catch(() => null);
+        if (selectedProfileId() !== profileId || onDisk !== content || !wanted()) {
+          return;
+        }
+        await atomicWriteFile(contentPath(profileId), resolution.content);
+        restartSelectedInBackground("outline keys fetched after the start: restarting with them", {}, wanted);
+        return;
+      }
+      if (left.size === 0) {
+        return;
+      }
+    }
+  })().catch((error: unknown) => {
+    console.warn(`vpn4tv: outline keys after the start: ${errorMessage(error)}`);
+  });
+}
+
 interface StartRequest {
   /** A connect: what the last session learned about "Russia direct" starts over. */
   newSession?: boolean;
   /** Check the final config in the worker first, and do not start if it is refused. */
   checkFirst?: boolean;
+  /** The Connect button of the window, whose caller shows the error a start ends with (the tray and a start at launch show none). */
+  byUser?: boolean;
 }
 
 /** The daemon itself went away during a call, as opposed to refusing it or not being there. */
@@ -539,14 +647,25 @@ async function startServiceNow(
     // VPN4TV: Outline dynamic keys are meant to be fetched by the client before
     // connecting — the provider rotates servers behind them. The resolved key is
     // written back, so the next start still works when the key host is blocked.
+    const outlineSession = ++outlineKeySession;
+    let outlineOutcomes: OutlineKeyOutcome[] = [];
     if (hasDynamicOutlineKeys(content)) {
-      const resolved = await resolveDynamicOutlineKeys(content);
-      if (resolved !== content) {
-        content = resolved;
+      const resolution = await resolveDynamicOutlineKeys(content);
+      outlineOutcomes = resolution.outcomes;
+      if (resolution.content !== content) {
+        content = resolution.content;
         if (profileId !== undefined) {
-          await atomicWriteFile(contentPath(profileId), resolved).catch(() => {});
+          await atomicWriteFile(contentPath(profileId), resolution.content).catch(() => {});
         }
       }
+    }
+    // A server whose key never came has no bridge: every connection through it
+    // is refused. With no other server the start stops here with the reason
+    // instead of "Connected" with nothing working (support case 2026-11-24).
+    const deadOutline = deadOutlineTags(content, outlineOutcomes);
+    if (outlineKeyVerdict(content, deadOutline, null) === "no-other-server") {
+      writeOutlineKeyLines(outlineOutcomes, false, true);
+      throw new Error(outlineKeyError("no-other-server", outlineOutcomes));
     }
     // VPN4TV: pick a resolver that is actually reachable on this network before
     // handing the config over — Russian ISPs kill DoH providers in waves, and the
@@ -624,6 +743,7 @@ async function startServiceNow(
       };
     }
     logRussiaDirect(ran);
+    writeOutlineKeyLines(outlineOutcomes, false, false);
     russiaDirect.recordApplied(russiaDirectLabel(wanted.offReason), ran);
     russiaDirect.onRunning(ran);
     if (russiaDirect.claimDnsCheck(ran)) {
@@ -632,6 +752,29 @@ async function startServiceNow(
     if (!fakeDnsAutoDisabled && hasFakeDns(ran.content)) {
       void runFakeDnsSelfCheck();
     }
+    // The server chosen by hand is one without a key while others work: it
+    // goes back to auto (the core keeps the choice in its cache file). A
+    // connect from the window stops with the reason, as on Android, where the
+    // saved server is cleared and the next start goes through Auto; a start
+    // nobody would see the error of (the tray, at launch, a reload) goes on
+    // through auto.
+    if (deadOutline.size > 0) {
+      const chosen = await chosenServerAfterStart();
+      if (outlineKeyVerdict(content, deadOutline, chosen) === "pick-another") {
+        const stop = request.byUser === true;
+        const line = `the chosen server has no Outline key: back to auto${stop ? ", stopping" : ""}`;
+        console.warn(`vpn4tv: ${line}`);
+        writeServiceLogLine({ warn: true, message: line });
+        await startedService?.selectOutbound({ groupTag: "select", outboundTag: "auto" }).catch(() => {});
+        if (stop) {
+          daemonState.noteStopRequested();
+          await managedService?.stopService({}).catch(() => {});
+          throw new Error(outlineKeyError("pick-another", outlineOutcomes));
+        }
+        await startedService?.closeAllConnections({}).catch(() => {});
+      }
+    }
+    fetchOutlineKeysAgain(outlineSession, profileId, content, outlineOutcomes);
   } finally {
     serviceStartRunning = false;
   }
@@ -985,7 +1128,7 @@ export async function regenerateRemoteProfiles(): Promise<void> {
   }
 }
 
-export async function startSelectedProfile(): Promise<void> {
+export async function startSelectedProfile(byUser = false): Promise<void> {
   // VPN4TV: before anything is awaited — see startServiceWithContent.
   startedThisSession = true;
   const selectedId = selectedProfileId();
@@ -994,7 +1137,7 @@ export async function startSelectedProfile(): Promise<void> {
   }
   const content = await readFile(contentPath(selectedId), "utf-8");
   // A connect: what the last session learned about "Russia direct" starts over.
-  await runServiceStart(() => startServiceNow(content, selectedId, { newSession: true }));
+  await runServiceStart(() => startServiceNow(content, selectedId, { newSession: true, byUser }));
 }
 
 let updateTimer: NodeJS.Timeout | null = null;
@@ -1237,7 +1380,7 @@ const handlers: Record<
   },
 
   async startService(): Promise<void> {
-    await startSelectedProfile();
+    await startSelectedProfile(true);
   },
 
   async takeOverService(): Promise<void> {
